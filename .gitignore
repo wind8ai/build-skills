@@ -1,0 +1,28 @@
+# Local agent configuration and skills
+.agents/
+
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
+
+# Python environments, build output and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local editor and OS files
+.idea/
+.vscode/
+.DS_Store
+*.log
+.tmp/
