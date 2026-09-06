@@ -26,5 +26,4 @@ Codex 和 Qoder 的实际完成度需用用户配置验证，框架测试不代�
 - [CLI 与配置](docs/cli.md)
 - [产品意图](docs/intent.md)
 - [框架设计](docs/design.md)
-- [实施计划](plans/001-framework.md)
 - [开发约定](CONTRIBUTING.md)
