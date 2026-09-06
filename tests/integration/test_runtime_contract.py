@@ -198,3 +198,32 @@ def test_improve_recovery_rejects_changed_context_with_fixed_prompt(task_config,
     assert code == 2
     assert "context does not match" in state["error"]
     assert state["round"] == 2
+
+
+def test_configured_python_keeps_its_virtual_environment(task_config, cli):
+    import sys
+
+    assert sys.prefix != sys.base_prefix
+    task_config.write_text(
+        task_config.read_text().replace('agent.py"]', f'agent.py", "venv-prefix", "{sys.prefix}"]')
+    )
+    code, result = cli(task_config, "prepare")
+    assert code == 0, result
+
+
+def test_revalidate_existing_skill_without_regeneration(task_config, cli):
+    source = task_config.parent / "existing-skill"
+    source.mkdir()
+    content = "---\nname: copy\ndescription: Copy files.\n---\nCopy input.txt to output.txt.\n"
+    (source / "SKILL.md").write_text(content)
+    _, state = cli(task_config, "prepare")
+    run = state["run"]
+    cli(task_config, "approve", "--run", run, "--accept", state["brief_digest"])
+    calls = state["calls"]
+    code, state = cli(task_config, "build", "--run", run, "--from-skill", str(source))
+    assert code == 0, state
+    assert state["calls"] == calls
+    assert state["candidate_source"]["kind"] == "imported"
+    assert (source / "SKILL.md").read_text() == content
+    code, state = cli(task_config, "loop", "--run", run)
+    assert code == 0 and state["status"] == "delivered"

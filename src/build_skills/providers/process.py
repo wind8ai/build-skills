@@ -10,7 +10,7 @@ from typing import Any
 from build_skills.config import canonical, digest
 from build_skills.models import BatchJudgment, Brief, Provider
 from build_skills.providers import codex, qoder
-from build_skills.workspace import WorkflowError, read_json, validate_skill, write_json
+from build_skills.workspace import WorkflowError, read_json, read_skill_directory, write_json
 
 
 def invoke(
@@ -115,13 +115,7 @@ def _collect_result(
         skill_root = cwd / "skill"
         if skill_root.is_symlink() or not skill_root.is_dir():
             raise WorkflowError("Agent did not create skill/; see its call evidence")
-        package = {}
-        for path in sorted(skill_root.rglob("*")):
-            if path.is_symlink():
-                raise WorkflowError("Skill output contains a symlink")
-            if path.is_file():
-                package[str(path.relative_to(skill_root))] = path.read_text()
-        return validate_skill({"files": package}).model_dump()
+        return read_skill_directory(skill_root).model_dump()
     if schema is not None:
         response = cwd / "response.json"
         if not response.is_file():

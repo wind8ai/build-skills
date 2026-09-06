@@ -8,6 +8,8 @@ from pathlib import Path
 request = json.loads(sys.stdin.read())
 stage = request["stage"]
 mode = sys.argv[1] if len(sys.argv) > 1 else "normal"
+if mode == "venv-prefix":
+    assert Path(sys.prefix).resolve() == Path(sys.argv[2]).resolve()
 if mode == "timeout":
     time.sleep(5)
 if mode == "error":

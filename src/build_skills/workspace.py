@@ -152,3 +152,15 @@ def validate_skill(value: Any) -> Skill:
             "Every resource must be referenced from SKILL.md or a referenced Markdown file"
         )
     return skill
+
+
+def read_skill_directory(root: Path) -> Skill:
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("Skill source must be a regular directory")
+    package = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise ValueError("Skill source contains a symlink")
+        if path.is_file():
+            package[str(path.relative_to(root))] = path.read_text()
+    return validate_skill({"files": package})

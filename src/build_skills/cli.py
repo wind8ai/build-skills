@@ -45,6 +45,7 @@ def register_stage(name: str) -> None:
         recover_call: Annotated[int | None, typer.Option("--recover-call", min=1)] = None,
         accept: str | None = typer.Option(None, "--accept"),
         feedback_file: Annotated[Path | None, typer.Option("--file")] = None,
+        from_skill: Annotated[Path | None, typer.Option("--from-skill")] = None,
         json_output: bool = typer.Option(False, "--json"),
     ) -> None:
         from build_skills.workflow import Workflow
@@ -54,6 +55,8 @@ def register_stage(name: str) -> None:
         code = 0
         try:
             loaded = load_config(config)
+            if from_skill is not None and name != "build":
+                raise ValueError("--from-skill is only supported for build")
             if recover_call is not None and name not in {"build", "improve"}:
                 raise ValueError("--recover-call is only supported for build and improve")
             if retry_failed and name not in {"execute", "verify"}:
@@ -70,8 +73,10 @@ def register_stage(name: str) -> None:
                         if feedback_file is None:
                             raise ValueError("--file is required")
                         workflow.feedback(feedback_file)
-                    elif name in {"build", "improve"}:
-                        getattr(workflow, name)(recover_call=recover_call)
+                    elif name == "build":
+                        workflow.build(recover_call=recover_call, from_skill=from_skill)
+                    elif name == "improve":
+                        workflow.improve(recover_call=recover_call)
                     elif name in {"execute", "verify"}:
                         getattr(workflow, name)(retry_failed=retry_failed)
                     elif name != "status":

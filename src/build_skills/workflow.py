@@ -239,14 +239,29 @@ class Workflow:
                 return
             self.improve()
 
-    def build(self, recover_call: int | None = None) -> None:
-        from build_skills.workspace import validate_skill
+    def build(self, recover_call: int | None = None, from_skill: Path | None = None) -> None:
+        from build_skills.workspace import read_skill_directory, validate_skill
 
         brief = self.approved()
         if self.state["round"]:
-            if recover_call is not None:
+            if recover_call is not None or from_skill is not None:
                 raise ValueError("Initial build is already accepted")
             self.artifact(f"skill-{self.state['round']}")
+            return
+        if from_skill is not None:
+            if recover_call is not None:
+                raise ValueError("Choose --from-skill or --recover-call")
+            source = from_skill.absolute()
+            skill = read_skill_directory(source)
+            self.store("skill-1", skill.model_dump())
+            self.state["round"] = 1
+            self.state["status"] = "built"
+            self.state["candidate_source"] = {
+                "kind": "imported",
+                "path": str(source),
+                "digest": digest(skill.model_dump()),
+            }
+            self.save()
             return
         context = {
             "scope": brief.scope,

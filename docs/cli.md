@@ -17,7 +17,7 @@ uv 在仓库内使用 `.venv`。命令入口也可通过 `.venv/bin/build-skills
 
 任务配置保存 name、goal、materials、workspace；模板通常保存 providers、roles、execution、limits、quality 和可选 prompts。材料支持 UTF-8 文本文件和 Skill 目录。单文件最多 1 MB，总材料最多 5 MB，不跟随符号链接。
 
-材料与 workspace 相对路径基于任务配置所在目录。provider 的 command 是参数数组；其中 `{config_dir}`、`{template_dir}` 分别展开为任务配置和模板所在目录。程序由框架直接启动，不经过 shell。需要脚本时使用这些显式路径，不能依赖 Agent 的当前目录定位脚本。
+材料与 workspace 相对路径基于任务配置所在目录。provider 的 command 是参数数组；其中 `{config_dir}`、`{template_dir}` 分别展开为任务配置和模板所在目录。程序由框架直接启动，不经过 shell。可执行文件路径会转为绝对路径，但保留符号链接，确保 `.venv/bin/python` 仍使用对应虚拟环境。需要脚本时使用这些显式路径，不能依赖 Agent 的当前目录定位脚本。
 
 每个 provider 包含 kind、command、model 和 permission。kind 为 codex、qoder 或 command。真实适配器必须指定 model，可用 reasoning_effort 配置推理强度，例如 Codex 的 high。command 用于可控外部程序或自定义接入，stdin 接收 stage、prompt、context 和 schema 的 JSON。
 
@@ -99,3 +99,6 @@ Skill 的附属资源需从 SKILL.md 可达；Markdown 链接和明确的相对�
 
 
 构建或改进的进程正常退出后，若产物因本地校验问题被拒绝，可用 `build --recover-call CALL_NUMBER` 或 `improve --recover-call CALL_NUMBER` 重新校验该次文件产物。恢复核对运行目录、阶段、模型、提示词及完整输入摘要，不重新调用模型。超时、中断、非零退出或输入变化的调用不能恢复；缺少输入摘要的早期记录也不进入此接口。
+
+
+需要复验现有 Skill 时，在 prepare/approve 后运行 `build --from-skill PATH`，再运行 loop。PATH 指向只包含 SKILL.md 和配套资源的独立包目录。导入会校验并复制内容、记录来源和摘要，不调用构建模型，也不跳过后续执行、评估或保留验证。它与 --recover-call 互斥，不能覆盖已接受的初始候选。

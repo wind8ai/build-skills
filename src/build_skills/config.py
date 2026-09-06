@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import shutil
 import tomllib
 from pathlib import Path
@@ -78,7 +79,7 @@ def load_config(path: Path) -> Config:
         ]
         executable = provider.command[0]
         if "/" in executable:
-            provider.command[0] = str((path.parent / executable).resolve())
+            provider.command[0] = os.path.abspath(path.parent / executable)
         if not shutil.which(provider.command[0]):
             raise ValueError(f"Executable unavailable: {provider.command[0]}")
         if provider.kind != "command" and not provider.model:
