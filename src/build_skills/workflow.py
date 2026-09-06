@@ -1,5 +1,7 @@
 """Persistent stages shared by individual commands and the loop."""
 
+import os
+import subprocess
 import time
 import uuid
 from importlib.resources import files
@@ -32,6 +34,26 @@ class Workflow:
                 raise ValueError("Configuration changed; start a new run")
             if self.state["materials"] != digest(snapshot(self.config.materials)):
                 raise ValueError("Materials changed; start a new run")
+            pending = self.state.get("pending_call")
+            if pending:
+                receipt_path = self.root / "calls" / f"{pending['number']:04d}" / "attempt.json"
+                receipt = read_json(receipt_path) if receipt_path.exists() else {}
+                if receipt.get("status") == "running" and receipt.get("pid"):
+                    try:
+                        os.kill(receipt["pid"], 0)
+                    except ProcessLookupError:
+                        pass
+                    else:
+                        raise WorkflowError(
+                            "Prior Agent process may still be active; inspect its evidence"
+                        )
+                elapsed = receipt.get("elapsed_seconds", max(0, time.time() - pending["started"]))
+                delta = elapsed - pending["reserved"]
+                self.state["usage"][pending["key"]]["elapsed"] += delta
+                self.state["elapsed"] += delta
+                self.state.pop("pending_call")
+                self.state["status"] = "interrupted"
+                self.save()
         elif create:
             material = snapshot(self.config.materials)
             write_json(self.root / "materials.json", material)
@@ -42,6 +64,7 @@ class Workflow:
                 "materials": digest(material),
                 "calls": 0,
                 "elapsed": 0.0,
+                "usage": {},
                 "round": 0,
                 "artifacts": {},
             }
@@ -59,7 +82,12 @@ class Workflow:
         return value
 
     def store(self, name: str, value: Any) -> Any:
-        write_json(safe_path(self.root, name + ".json"), value)
+        target = safe_path(self.root, name + ".json")
+        if target.exists():
+            previous = read_json(target)
+            if digest(previous) != digest(value):
+                write_json(self.root / "history" / f"{name}-{digest(previous)}.json", previous)
+        write_json(target, value)
         self.state["artifacts"][name] = digest(value)
         self.save()
         return value
@@ -72,40 +100,58 @@ class Workflow:
         provider: str | None = None,
         cwd: Path | None = None,
     ) -> Any:
-        limits = self.config.limits
-        remaining = limits.total_seconds - self.state["elapsed"]
-        if self.state["calls"] >= limits.max_calls or remaining <= 0:
-            raise WorkflowError("Run budget exhausted", 4)
+        template = self.config.prompts.get(stage)
+        if template is None:
+            template = files("build_skills.templates").joinpath(stage + ".j2").read_text()
+        try:
+            prompt = (
+                SandboxedEnvironment(undefined=StrictUndefined)
+                .from_string(template)
+                .render(
+                    data=canonical(context),
+                    schema=canonical(schema),
+                    goal=self.config.goal,
+                    task=context.get("task", ""),
+                )
+            )
+        except TemplateError as exc:
+            raise ValueError(f"Invalid {stage} prompt template: {exc}") from exc
+        selected_name = provider or self.config.roles[stage]
+        policy = getattr(self.config.limits, stage)
+        key = f"execute:{selected_name}" if stage == "execute" else stage
+        usage = self.state["usage"].setdefault(key, {"calls": 0, "elapsed": 0.0})
+        if policy.max_calls and usage["calls"] >= policy.max_calls:
+            raise WorkflowError(f"Call budget exhausted for {key}", 4)
+        remaining = policy.total_seconds - usage["elapsed"] if policy.total_seconds else None
+        if remaining is not None and remaining <= 0:
+            raise WorkflowError(f"Time budget exhausted for {key}", 4)
+        timeout = policy.timeout_seconds or None
+        if remaining is not None:
+            timeout = min(timeout, remaining) if timeout is not None else remaining
+        reserved = timeout or 0.0
         self.state["calls"] += 1
-        # Reserve the entire timeout. A crashed parent cannot lose charged time.
-        timeout = min(limits.timeout_seconds, remaining)
-        self.state["elapsed"] += timeout
+        usage["calls"] += 1
+        usage["elapsed"] += reserved
+        self.state["elapsed"] += reserved
+        self.state["pending_call"] = {
+            "key": key,
+            "reserved": reserved,
+            "started": time.time(),
+            "number": self.state["calls"],
+        }
         self.save()
         start = time.monotonic()
         try:
             evidence = self.root / "calls" / f"{self.state['calls']:04d}"
             cwd = cwd or self.root / "sessions" / uuid.uuid4().hex
             cwd.mkdir(parents=True, exist_ok=True)
-            template = self.config.prompts.get(stage)
-            if template is None:
-                template = files("build_skills.templates").joinpath(stage + ".j2").read_text()
-            try:
-                prompt = (
-                    SandboxedEnvironment(undefined=StrictUndefined)
-                    .from_string(template)
-                    .render(
-                        data=canonical(context),
-                        schema=canonical(schema),
-                        goal=self.config.goal,
-                        task=context.get("task", ""),
-                    )
-                )
-            except TemplateError as exc:
-                raise ValueError(f"Invalid {stage} prompt template: {exc}") from exc
-            selected = self.config.providers[provider or self.config.roles[stage]]
+            selected = self.config.providers[selected_name]
             return invoke(selected, stage, prompt, context, schema, cwd, evidence, timeout)
         finally:
-            self.state["elapsed"] += min(time.monotonic() - start, timeout) - timeout
+            elapsed = time.monotonic() - start
+            usage["elapsed"] += elapsed - reserved
+            self.state["elapsed"] += elapsed - reserved
+            self.state.pop("pending_call", None)
             self.save()
 
     def prepare(self) -> None:
@@ -165,7 +211,11 @@ class Workflow:
             return
         self.build()
         while True:
-            self.execute()
+            try:
+                self.execute()
+            except WorkflowError:
+                self.evaluate()
+                raise
             self.evaluate()
             if self.state["development_passed"]:
                 self.verify()
@@ -182,6 +232,7 @@ class Workflow:
             return
         context = {
             "scope": brief.scope,
+            "materials": read_json(self.root / "materials.json"),
             "criteria": brief.criteria,
             "development": [s.model_dump() for s in brief.development],
             "sources": [s.model_dump() for s in brief.sources],
@@ -194,7 +245,7 @@ class Workflow:
         self.state["status"] = "built"
         self.save()
 
-    def execute(self, holdout: bool = False) -> None:
+    def execute(self, holdout: bool = False, retry_failed: bool = False) -> None:
         from build_skills.evaluation import observe, stage_task
         from build_skills.workspace import validate_skill
 
@@ -211,71 +262,145 @@ class Workflow:
                 for repetition in range(self.config.execution.repetitions):
                     key = "execution-" + digest([prefix, number, model, scenario.id, repetition])
                     if key in self.state["artifacts"]:
-                        records.append(self.artifact(key))
-                        continue
+                        previous = self.artifact(key)
+                        if previous["status"] == "completed" or not retry_failed:
+                            records.append(previous)
+                            continue
+                    self.state["artifacts"].pop(f"{prefix}-report-{number}", None)
+                    self.state[f"{prefix}_passed"] = False
+                    self.save()
                     cwd = self.root / "sessions" / uuid.uuid4().hex
-                    stage_task(cwd, scenario, skill)
-                    output = self.call("execute", {"task": scenario.task}, None, model, cwd)
+                    before = self.state["calls"]
                     record = {
                         "model": model,
                         "scenario": scenario.id,
                         "repetition": repetition,
                         "task": scenario.task,
                         "skill_digest": digest(skill.model_dump()),
-                        "output": output,
-                        "observation": observe(cwd, scenario),
+                        "cwd": str(cwd),
+                        "status": "completed",
                     }
+                    try:
+                        stage_task(cwd, scenario, skill)
+                        if self.config.execution.git_repository:
+                            subprocess.run(
+                                ["git", "init", "--quiet", "--template="],
+                                cwd=cwd,
+                                check=True,
+                                capture_output=True,
+                                timeout=10,
+                            )
+                        record["output"] = self.call(
+                            "execute", {"task": scenario.task}, None, model, cwd
+                        )
+                        record["observation"] = observe(cwd, scenario)
+                    except (WorkflowError, OSError, ValueError, subprocess.SubprocessError) as exc:
+                        record.update(
+                            status="failed",
+                            error=str(exc),
+                            error_code=exc.code if isinstance(exc, WorkflowError) else 5,
+                            output={"text": "Execution did not complete."},
+                            observation={"checks": [], "files": {}},
+                        )
+                        # Preserve safe partial observations when a process fails.
+                        try:
+                            record["observation"] = observe(cwd, scenario)
+                        except (OSError, ValueError):
+                            pass
+                    record["call"] = self.state["calls"] if self.state["calls"] > before else None
                     records.append(self.store(key, record))
         self.store(f"{prefix}-executions-{number}", records)
         self.state["execution_count"] = len(records)
-        self.state["status"] = "executed"
+        self.state["execution_results"] = [
+            {k: r[k] for k in ("model", "scenario", "status")} for r in records
+        ]
+        failures = [r for r in records if r["status"] != "completed"]
+        self.state["status"] = "execution_incomplete" if failures else "executed"
         self.save()
+        if failures:
+            code = 4 if all(r.get("error_code") == 4 for r in failures) else 5
+            raise WorkflowError(
+                f"{len(failures)} execution(s) incomplete; all model results retained", code
+            )
 
     def evaluate(self, holdout: bool = False) -> None:
-        from build_skills.models import Judgment
+        from build_skills.models import BatchJudgment
 
         brief = self.approved()
         number = self.state["round"]
         prefix = "holdout" if holdout else "development"
+        name = f"{prefix}-report-{number}"
+        if name in self.state["artifacts"]:
+            report = self.artifact(name)
+            self.state[f"{prefix}_passed"] = report["passed"]
+            self.save()
+            return
         records = self.artifact(f"{prefix}-executions-{number}")
-        judgments = []
-        for index, record in enumerate(records):
-            key = f"{prefix}-judgment-{number}-{index}"
-            if key in self.state["artifacts"]:
-                judged = self.artifact(key)
-            else:
-                context = {
-                    "criteria": brief.criteria,
-                    "task": record["task"],
-                    "output": record["output"],
-                    "observation": record["observation"],
-                }
-                judgment = Judgment.model_validate(
-                    self.call("evaluate", context, Judgment.model_json_schema())
-                )
-                direct = all(c["passed"] for c in record["observation"]["checks"])
-                passed = (
-                    direct
-                    and judgment.passed
-                    and judgment.score >= self.config.quality.minimum_score
-                )
-                judged = self.store(
-                    key,
+        scenarios = brief.holdout if holdout else brief.development
+        expected = {
+            (m, s.id, n)
+            for m in self.config.execution.models
+            for s in scenarios
+            for n in range(self.config.execution.repetitions)
+        }
+        identities = {(r["model"], r["scenario"], r["repetition"]) for r in records}
+        if identities != expected or len(records) != len(expected):
+            raise ValueError("Execution matrix is incomplete or duplicated")
+        candidates = {f"case-{i}": r for i, r in enumerate(records) if r["status"] == "completed"}
+        scored = {}
+        if candidates:
+            context = {
+                "criteria": brief.criteria,
+                "executions": [
                     {
-                        "model": record["model"],
-                        "scenario": record["scenario"],
-                        "passed": passed,
-                        "judgment": judgment.model_dump(),
-                    },
+                        "label": label,
+                        "task": r["task"],
+                        "output": r["output"],
+                        "observation": r["observation"],
+                    }
+                    for label, r in candidates.items()
+                ],
+            }
+            batch = BatchJudgment.model_validate(
+                self.call("evaluate", context, BatchJudgment.model_json_schema())
+            )
+            scored = {item.label: item for item in batch.results}
+            if len(scored) != len(batch.results) or set(scored) != set(candidates):
+                raise WorkflowError("Judge returned missing, duplicate or unknown labels")
+        judgments = []
+        for i, r in enumerate(records):
+            if r["status"] != "completed":
+                judgments.append(
+                    {
+                        "model": r["model"],
+                        "scenario": r["scenario"],
+                        "passed": False,
+                        "error": r.get("error"),
+                        "judgment": None,
+                    }
                 )
-            judgments.append(judged)
+                continue
+            judgment = scored[f"case-{i}"]
+            direct = all(check["passed"] for check in r["observation"]["checks"])
+            passed = (
+                direct and judgment.passed and judgment.score >= self.config.quality.minimum_score
+            )
+            judgments.append(
+                {
+                    "model": r["model"],
+                    "scenario": r["scenario"],
+                    "passed": passed,
+                    "judgment": judgment.model_dump(exclude={"label"}),
+                }
+            )
         report = {
             "passed": bool(judgments) and all(j["passed"] for j in judgments),
             "judgments": judgments,
+            "execution_errors": len(records) - len(candidates),
             "skill_digest": digest(self.artifact(f"skill-{number}")),
             "isolation": "separate inputs and sessions; not an operating-system sandbox",
         }
-        self.store(f"{prefix}-report-{number}", report)
+        self.store(name, report)
         self.state[f"{prefix}_passed"] = report["passed"]
         self.state["status"] = "evaluated"
         self.save()
@@ -293,6 +418,7 @@ class Workflow:
             raise WorkflowError("Maximum rounds reached without meeting the standard", 4)
         context = {
             "scope": brief.scope,
+            "materials": read_json(self.root / "materials.json"),
             "criteria": brief.criteria,
             "skill": self.artifact(f"skill-{number}"),
             "report": report,
@@ -305,14 +431,18 @@ class Workflow:
         self.state["status"] = "built"
         self.save()
 
-    def verify(self) -> None:
+    def verify(self, retry_failed: bool = False) -> None:
         self.approved()
         number = self.state["round"]
         if not self.artifact(f"development-report-{number}")["passed"]:
             raise WorkflowError("Development criteria not met", 4)
         self.state["holdout_started"] = True
         self.save()
-        self.execute(holdout=True)
+        try:
+            self.execute(holdout=True, retry_failed=retry_failed)
+        except WorkflowError:
+            self.evaluate(holdout=True)
+            raise
         self.evaluate(holdout=True)
         if not self.state["holdout_passed"]:
             raise WorkflowError("Holdout failed; use fresh scenarios in a new run", 4)

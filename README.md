@@ -17,7 +17,9 @@ uv run build-skills loop --config examples/local-files/config.toml --json
 
 首次 loop 在确认点停止，返回运行标识、待审阅文档和摘要。按照 [本地示例](examples/local-files/README.md) 审阅并确认，再继续运行。
 
-示例使用确定性进程替身，不调用真实模型。Codex 和 Qoder 适配器已实现，真实模型与 Skill 质量验收待首套用户配置。
+示例使用确定性进程替身，不调用真实模型。构建默认不限时，执行默认每个模型每次十五分钟，限制可在模板中调整。阶段采用文件交接，单个模型失败后继续其余模型，并支持只重试失败项。
+
+Codex 和 Qoder 的实际完成度需用用户配置验证，框架测试不代替 Skill 质量验收。
 
 ## 文档
 

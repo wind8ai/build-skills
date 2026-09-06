@@ -12,6 +12,13 @@ if mode == "timeout":
     time.sleep(5)
 if mode == "error":
     sys.exit(7)
+if mode == "fail-once" and stage == "execute":
+    marker = Path(sys.argv[2])
+    if not marker.exists():
+        marker.write_text("attempted")
+        sys.exit(7)
+if mode == "execute-error" and stage == "execute":
+    sys.exit(7)
 if stage == "prepare":
 
     def scenario(name, content):
@@ -47,6 +54,15 @@ elif stage in ("build", "improve"):
         }
     }
 elif stage == "execute":
+    if mode == "repo-root":
+        import subprocess
+
+        assert (
+            Path(
+                subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+            )
+            == Path.cwd()
+        )
     Path("output.txt").write_text(
         "wrong"
         if "broken" in Path(".skill/SKILL.md").read_text()
@@ -54,7 +70,18 @@ elif stage == "execute":
     )
     result = {"text": "Copied input.txt to output.txt."}
 else:
-    result = {"score": 1.0, "passed": True, "reason": "Exact copy", "evidence": ["output.txt"]}
+    result = {
+        "results": [
+            {
+                "label": item["label"],
+                "score": 1.0,
+                "passed": True,
+                "reason": "Exact copy",
+                "evidence": ["output.txt"],
+            }
+            for item in request["context"]["executions"]
+        ]
+    }
 if stage == "build" and mode == "alias":
     result["files"]["./SKILL.md"] = "not a skill"
 if stage == "build" and mode == "casealias":
@@ -62,4 +89,14 @@ if stage == "build" and mode == "casealias":
     result["files"]["skill.md"] = "not a skill"
 if stage == "build" and mode == "garbage":
     result["files"]["scratch.log"] = "unused"
-print(json.dumps(result))
+if stage in {"build", "improve"}:
+    for name, content in result["files"].items():
+        if name.startswith("./") or name == "skill.md":
+            # A filesystem cannot retain path aliases; write the conflicting bytes.
+            name = "SKILL.md"
+        target = Path("skill") / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+elif stage != "execute" and mode != "missing-response":
+    Path("response.json").write_text(json.dumps(result))
+print("Completed fixture operation.")

@@ -41,6 +41,7 @@ def register_stage(name: str) -> None:
     def command(
         config: ConfigPath,
         run: str | None = typer.Option(None, "--run"),
+        retry_failed: bool = typer.Option(False, "--retry-failed"),
         accept: str | None = typer.Option(None, "--accept"),
         feedback_file: Annotated[Path | None, typer.Option("--file")] = None,
         json_output: bool = typer.Option(False, "--json"),
@@ -52,6 +53,8 @@ def register_stage(name: str) -> None:
         code = 0
         try:
             loaded = load_config(config)
+            if retry_failed and name not in {"execute", "verify"}:
+                raise ValueError("--retry-failed is only supported for execute and verify")
             if run is None and name not in {"prepare", "loop"}:
                 raise ValueError("--run is required")
             workflow = Workflow(loaded, run)
@@ -64,6 +67,8 @@ def register_stage(name: str) -> None:
                         if feedback_file is None:
                             raise ValueError("--file is required")
                         workflow.feedback(feedback_file)
+                    elif name in {"execute", "verify"}:
+                        getattr(workflow, name)(retry_failed=retry_failed)
                     elif name != "status":
                         getattr(workflow, name)()
                     result = workflow.status()

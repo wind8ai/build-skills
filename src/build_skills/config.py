@@ -62,6 +62,8 @@ def load_config(path: Path) -> Config:
         raise ValueError(f"roles must contain exactly {sorted(required)}")
     if set(config.prompts) - (required | {"execute"}):
         raise ValueError("Unknown prompt stage")
+    if config.execution.git_repository and not shutil.which("git"):
+        raise ValueError("execution.git_repository requires Git")
     references = [*config.roles.values(), *config.execution.models]
     if any(ref not in config.providers for ref in references):
         raise ValueError("Unknown provider reference")

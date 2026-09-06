@@ -6,7 +6,7 @@ from build_skills.models import Provider
 
 
 def arguments(provider: Provider, cwd: Path, prompt: str) -> list[str]:
-    return [
+    args = [
         *provider.command,
         "--print",
         "--model",
@@ -16,5 +16,8 @@ def arguments(provider: Provider, cwd: Path, prompt: str) -> list[str]:
         "--no-session-persistence",
         "--permission-mode",
         "bypass_permissions" if provider.permission == "full" else "default",
-        prompt,
     ]
+
+    if provider.reasoning_effort:
+        args += ["--reasoning-effort", provider.reasoning_effort]
+    return [*args, prompt]

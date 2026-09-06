@@ -19,9 +19,29 @@ repetitions = 1
 
 [limits]
 max_rounds = 3
-max_calls = 60
-timeout_seconds = 10
-total_seconds = 60
+
+# 0 disables the corresponding limit. Construction has no framework deadline.
+[limits.build]
+timeout_seconds = 0
+max_calls = 0
+total_seconds = 0
+
+[limits.improve]
+timeout_seconds = 0
+max_calls = 0
+total_seconds = 0
+
+# Each execution model owns its own call/time budget.
+[limits.execute]
+timeout_seconds = 900
+max_calls = 0
+total_seconds = 0
+
+[limits.prepare]
+timeout_seconds = 600
+
+[limits.evaluate]
+timeout_seconds = 600
 
 [quality]
 minimum_score = 0.8

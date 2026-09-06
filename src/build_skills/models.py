@@ -13,18 +13,29 @@ class Provider(Document):
     kind: Literal["codex", "qoder", "command"]
     command: list[str] = Field(min_length=1)
     model: str = ""
+    reasoning_effort: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]*$")
     permission: Literal["restricted", "full"] = "restricted"
+
+
+class CallLimits(Document):
+    # Zero disables a limit. TOML has no null value.
+    timeout_seconds: float = Field(default=0, ge=0, allow_inf_nan=False)
+    max_calls: int = Field(default=0, ge=0)
+    total_seconds: float = Field(default=0, ge=0, allow_inf_nan=False)
 
 
 class Limits(Document):
     max_rounds: int = Field(default=3, ge=1, le=100)
-    max_calls: int = Field(default=60, ge=1)
-    timeout_seconds: float = Field(default=120, gt=0)
-    total_seconds: float = Field(default=1800, gt=0)
+    prepare: CallLimits = Field(default_factory=lambda: CallLimits(timeout_seconds=600))
+    build: CallLimits = Field(default_factory=CallLimits)
+    improve: CallLimits = Field(default_factory=CallLimits)
+    execute: CallLimits = Field(default_factory=lambda: CallLimits(timeout_seconds=900))
+    evaluate: CallLimits = Field(default_factory=lambda: CallLimits(timeout_seconds=600))
 
 
 class Execution(Document):
     models: list[str] = Field(min_length=1)
+    git_repository: bool = False
     repetitions: int = Field(default=1, ge=1, le=20)
 
 
@@ -77,3 +88,11 @@ class Judgment(Document):
     passed: bool
     reason: str = Field(min_length=1)
     evidence: list[str] = Field(min_length=1)
+
+
+class LabeledJudgment(Judgment):
+    label: str
+
+
+class BatchJudgment(Document):
+    results: list[LabeledJudgment]

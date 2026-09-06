@@ -5,7 +5,7 @@ from pathlib import Path
 from build_skills.models import Provider
 
 
-def arguments(provider: Provider, cwd: Path, output: Path, schema: Path | None) -> list[str]:
+def arguments(provider: Provider, cwd: Path, output: Path) -> list[str]:
     args = [
         *provider.command,
         "exec",
@@ -20,6 +20,6 @@ def arguments(provider: Provider, cwd: Path, output: Path, schema: Path | None) 
         "--sandbox",
         "danger-full-access" if provider.permission == "full" else "workspace-write",
     ]
-    if schema is not None:
-        args += ["--output-schema", str(schema)]
+    if provider.reasoning_effort:
+        args += ["-c", f'model_reasoning_effort="{provider.reasoning_effort}"']
     return [*args, "-"]

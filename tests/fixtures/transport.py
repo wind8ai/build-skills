@@ -8,25 +8,29 @@ from pathlib import Path
 args = sys.argv[1:]
 if "exec" in args:
     assert "--model" in args and "--ephemeral" in args and "--sandbox" in args
+    assert "--output-schema" not in args
     assert Path(args[args.index("--cd") + 1]) == Path.cwd()
     prompt = sys.stdin.read()
-    schema = (
-        json.loads(Path(args[args.index("--output-schema") + 1]).read_text())
-        if "--output-schema" in args
-        else None
-    )
 else:
     assert "--print" in args and "--no-session-persistence" in args
     assert Path(args[args.index("--cwd") + 1]) == Path.cwd()
     prompt = args[-1]
-    marker = "Return only JSON matching this schema:\n"
-    schema = json.loads(prompt.rsplit(marker, 1)[1]) if marker in prompt else None
-stage = {"Brief": "prepare", "Skill": "build", "Judgment": "evaluate"}.get(
-    schema["title"] if schema else "", "execute"
+marker = "The final chat message can be a short completion summary:\n"
+schema = json.loads(prompt.rsplit(marker, 1)[1]) if marker in prompt else None
+stage = {"Brief": "prepare", "BatchJudgment": "evaluate"}.get(
+    schema["title"] if schema else "",
+    "build" if "skill/SKILL.md" in prompt and "Create" in prompt else "execute",
 )
 result = subprocess.run(
     [sys.executable, str(Path(__file__).with_name("agent.py"))],
-    input=json.dumps({"stage": stage}),
+    input=json.dumps(
+        {
+            "stage": stage,
+            "context": json.loads(prompt.split("\nWrite response.json")[0].rsplit("\n", 1)[1])
+            if stage == "evaluate"
+            else {},
+        }
+    ),
     text=True,
     capture_output=True,
     check=True,

@@ -15,7 +15,7 @@ def test_prepare_requires_approval_and_binds_it_to_brief(task_config, cli):
 def test_timeout_retains_failure_and_consumes_call(task_config, cli):
     task_config.write_text(
         task_config.read_text().replace('agent.py"]', 'agent.py", "timeout"]')
-        + "\n[limits]\ntimeout_seconds = 0.05\n"
+        + "\n[limits.prepare]\ntimeout_seconds = 0.05\n"
     )
     code, result = cli(task_config, "prepare")
     assert code == 5, result

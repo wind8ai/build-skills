@@ -12,8 +12,13 @@ def test_loop_delivers_and_resuming_does_not_repeat_calls(task_config, cli):
 
 
 def test_budget_stops_without_successful_delivery(task_config, cli):
+    task_config.write_text(
+        task_config.read_text().replace(
+            'models = ["one", "two"]', 'models = ["one", "two"]\nrepetitions = 2'
+        )
+    )
     with task_config.open("a") as handle:
-        handle.write("\n[limits]\nmax_calls = 1\n")
+        handle.write("\n[limits.execute]\nmax_calls = 1\n")
     _, state = cli(task_config, "loop")
     cli(task_config, "approve", "--run", state["run"], "--accept", state["brief_digest"])
     code, result = cli(task_config, "loop", "--run", state["run"])
