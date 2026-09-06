@@ -42,6 +42,7 @@ def register_stage(name: str) -> None:
         config: ConfigPath,
         run: str | None = typer.Option(None, "--run"),
         retry_failed: bool = typer.Option(False, "--retry-failed"),
+        recover_call: Annotated[int | None, typer.Option("--recover-call", min=1)] = None,
         accept: str | None = typer.Option(None, "--accept"),
         feedback_file: Annotated[Path | None, typer.Option("--file")] = None,
         json_output: bool = typer.Option(False, "--json"),
@@ -53,6 +54,8 @@ def register_stage(name: str) -> None:
         code = 0
         try:
             loaded = load_config(config)
+            if recover_call is not None and name not in {"build", "improve"}:
+                raise ValueError("--recover-call is only supported for build and improve")
             if retry_failed and name not in {"execute", "verify"}:
                 raise ValueError("--retry-failed is only supported for execute and verify")
             if run is None and name not in {"prepare", "loop"}:
@@ -67,6 +70,8 @@ def register_stage(name: str) -> None:
                         if feedback_file is None:
                             raise ValueError("--file is required")
                         workflow.feedback(feedback_file)
+                    elif name in {"build", "improve"}:
+                        getattr(workflow, name)(recover_call=recover_call)
                     elif name in {"execute", "verify"}:
                         getattr(workflow, name)(retry_failed=retry_failed)
                     elif name != "status":

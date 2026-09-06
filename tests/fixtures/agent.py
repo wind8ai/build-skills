@@ -82,6 +82,11 @@ else:
             for item in request["context"]["executions"]
         ]
     }
+if stage == "build" and mode == "repair-output":
+    result["files"]["SKILL.md"] = "---\nname: copy\n---\nCopy exactly.\n"
+if stage == "build" and mode == "command-resource":
+    result["files"]["SKILL.md"] += "\n```bash\npython3 <skill-dir>/scripts/check.py\n```\n"
+    result["files"]["scripts/check.py"] = "print('ok')\n"
 if stage == "build" and mode == "alias":
     result["files"]["./SKILL.md"] = "not a skill"
 if stage == "build" and mode == "casealias":
@@ -99,4 +104,6 @@ if stage in {"build", "improve"}:
         target.write_text(content)
 elif stage != "execute" and mode != "missing-response":
     Path("response.json").write_text(json.dumps(result))
+if stage == "build" and mode == "partial-build":
+    sys.exit(7)
 print("Completed fixture operation.")

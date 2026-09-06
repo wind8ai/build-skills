@@ -13,7 +13,7 @@ from jinja2.sandbox import SandboxedEnvironment
 
 from build_skills.config import Config, canonical, digest
 from build_skills.models import Brief
-from build_skills.providers.process import invoke
+from build_skills.providers.process import invoke, recover_result
 from build_skills.workspace import WorkflowError, read_json, safe_path, snapshot, write_json
 
 
@@ -99,6 +99,7 @@ class Workflow:
         schema: dict[str, Any] | None,
         provider: str | None = None,
         cwd: Path | None = None,
+        recover_call: int | None = None,
     ) -> Any:
         template = self.config.prompts.get(stage)
         if template is None:
@@ -117,6 +118,21 @@ class Workflow:
         except TemplateError as exc:
             raise ValueError(f"Invalid {stage} prompt template: {exc}") from exc
         selected_name = provider or self.config.roles[stage]
+        if recover_call is not None:
+            if recover_call < 1 or recover_call > self.state["calls"]:
+                raise ValueError("Recovery call is not part of this run")
+            result = recover_result(
+                self.config.providers[selected_name],
+                stage,
+                prompt,
+                context,
+                schema,
+                self.root / "calls" / f"{recover_call:04d}",
+                self.root / "sessions",
+            )
+            self.state.setdefault("recoveries", []).append({"call": recover_call, "stage": stage})
+            self.save()
+            return result
         policy = getattr(self.config.limits, stage)
         key = f"execute:{selected_name}" if stage == "execute" else stage
         usage = self.state["usage"].setdefault(key, {"calls": 0, "elapsed": 0.0})
@@ -223,11 +239,13 @@ class Workflow:
                 return
             self.improve()
 
-    def build(self) -> None:
+    def build(self, recover_call: int | None = None) -> None:
         from build_skills.workspace import validate_skill
 
         brief = self.approved()
         if self.state["round"]:
+            if recover_call is not None:
+                raise ValueError("Initial build is already accepted")
             self.artifact(f"skill-{self.state['round']}")
             return
         context = {
@@ -239,7 +257,9 @@ class Workflow:
         }
         from build_skills.models import Skill
 
-        skill = validate_skill(self.call("build", context, Skill.model_json_schema()))
+        skill = validate_skill(
+            self.call("build", context, Skill.model_json_schema(), recover_call=recover_call)
+        )
         self.store("skill-1", skill.model_dump())
         self.state["round"] = 1
         self.state["status"] = "built"
@@ -405,7 +425,7 @@ class Workflow:
         self.state["status"] = "evaluated"
         self.save()
 
-    def improve(self) -> None:
+    def improve(self, recover_call: int | None = None) -> None:
         from build_skills.models import Skill
         from build_skills.workspace import validate_skill
 
@@ -424,7 +444,9 @@ class Workflow:
             "report": report,
             "executions": self.artifact(f"development-executions-{number}"),
         }
-        skill = validate_skill(self.call("improve", context, Skill.model_json_schema()))
+        skill = validate_skill(
+            self.call("improve", context, Skill.model_json_schema(), recover_call=recover_call)
+        )
         self.store(f"skill-{number + 1}", skill.model_dump())
         self.state["round"] = number + 1
         self.state["development_passed"] = False

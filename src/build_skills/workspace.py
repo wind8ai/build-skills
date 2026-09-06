@@ -2,6 +2,7 @@
 
 import fcntl
 import json
+import posixpath
 import re
 import unicodedata
 from collections.abc import Iterator
@@ -118,6 +119,19 @@ def validate_skill(value: Any) -> Skill:
         references[filename] = set()
         if not filename.endswith(".md"):
             continue
+        for target in skill.files:
+            spellings = [
+                posixpath.relpath(target, str(Path(filename).parent)),
+                "<skill-dir>/" + target,
+            ]
+            for spelling in spellings:
+                pattern = r"(?:^|[\s`\"'(])" + re.escape(spelling) + r"(?=$|[\s`\"'),;|&])"
+                if re.search(pattern, body, re.MULTILINE):
+                    references[filename].add(target)
+        for target in re.findall(r"<skill-dir>/([^\s`\"'<>|;(),，。]+)", body):
+            safe_path(Path("/skill"), target)
+            if target not in skill.files:
+                raise ValueError(f"Missing referenced resource: {target}")
         for link in re.findall(r"\]\(([^)\s]+)\)", body):
             if "://" in link or link.startswith("#"):
                 continue
@@ -134,5 +148,7 @@ def validate_skill(value: Any) -> Skill:
             reached.add(current)
             pending.extend(references.get(current, set()))
     if reached != set(skill.files):
-        raise ValueError("Every resource must be linked from SKILL.md or a linked Markdown file")
+        raise ValueError(
+            "Every resource must be referenced from SKILL.md or a referenced Markdown file"
+        )
     return skill

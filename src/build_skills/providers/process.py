@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from build_skills.config import canonical
+from build_skills.config import canonical, digest
 from build_skills.models import BatchJudgment, Brief, Provider
 from build_skills.providers import codex, qoder
 from build_skills.workspace import WorkflowError, read_json, validate_skill, write_json
@@ -41,6 +41,7 @@ def invoke(
         )
     receipt = {
         "stage": stage,
+        "context_digest": digest(context),
         "model": provider.model,
         "permission": provider.permission,
         "cwd": str(cwd),
@@ -135,3 +136,35 @@ def _collect_result(
         raise WorkflowError("Missing or oversized agent response")
     text = result_path.read_text().strip()
     return {"text": text}
+
+
+def recover_result(
+    provider: Provider,
+    stage: str,
+    prompt: str,
+    context: dict[str, Any],
+    schema: dict[str, Any] | None,
+    evidence: Path,
+    sessions: Path,
+) -> Any:
+    receipt = read_json(evidence / "attempt.json")
+    if receipt.get("exit_code") != 0 or receipt.get("status") not in {
+        "invalid_output",
+        "process_exited",
+        "completed",
+    }:
+        raise ValueError("Only normally exited calls can be recovered")
+    if receipt.get("stage") != stage or receipt.get("model") != provider.model:
+        raise ValueError("Recovery stage or model does not match")
+    if receipt.get("context_digest") != digest(context):
+        raise ValueError("Recovery context does not match the current inputs")
+    if (evidence / "prompt.txt").read_text() != prompt:
+        raise ValueError("Recovery prompt does not match the current inputs")
+    cwd = Path(receipt["cwd"])
+    if cwd.is_symlink() or not cwd.resolve().is_relative_to(sessions.resolve()):
+        raise ValueError("Recovery directory is outside this run")
+    result = _collect_result(provider, stage, schema, cwd, evidence, evidence / "result.txt")
+    receipt["status"] = "completed"
+    receipt["recovered"] = True
+    write_json(evidence / "attempt.json", receipt)
+    return result
