@@ -2,7 +2,7 @@
 
 ## 安装
 
-要求 Python 3.12 或更新版本、uv、macOS 或 Linux。进程组清理和运行锁使用 POSIX 接口，暂不支持 Windows。
+要求 Python 3.12、uv、macOS 或 Linux。进程组清理和运行锁使用 POSIX 接口，暂不支持 Windows。
 
 ```bash
 uv sync --locked

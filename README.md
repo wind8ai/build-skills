@@ -6,7 +6,7 @@
 
 ## 开始使用
 
-需要 Python 3.12+、uv 和 macOS 或 Linux。
+需要 Python 3.12、uv 和 macOS 或 Linux。
 
 ```bash
 uv sync --locked
