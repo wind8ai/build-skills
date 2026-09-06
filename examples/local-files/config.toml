@@ -1,0 +1,5 @@
+template = "template.toml"
+name = "copy-text"
+goal = "Create a skill for copying text files without changing their contents."
+materials = ["materials/notes.md"]
+workspace = "../../.build-skills/example"

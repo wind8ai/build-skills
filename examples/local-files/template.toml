@@ -1,0 +1,27 @@
+# Deterministic demonstration only. These are not real model providers.
+[providers.demo_a]
+kind = "command"
+command = ["python3", "{template_dir}/../../tests/fixtures/agent.py"]
+
+[providers.demo_b]
+kind = "command"
+command = ["python3", "{template_dir}/../../tests/fixtures/agent.py"]
+
+[roles]
+prepare = "demo_a"
+build = "demo_a"
+evaluate = "demo_a"
+improve = "demo_a"
+
+[execution]
+models = ["demo_a", "demo_b"]
+repetitions = 1
+
+[limits]
+max_rounds = 3
+max_calls = 60
+timeout_seconds = 10
+total_seconds = 60
+
+[quality]
+minimum_score = 0.8
