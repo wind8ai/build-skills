@@ -29,3 +29,10 @@ dist/
 
 # Framework development runs
 .build-skills/
+
+# Internal experiments and planning documents stay local
+/experiments/
+/plans/
+/docs/experiments/
+/docs/design.md
+/docs/intent.md
