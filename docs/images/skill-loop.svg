@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 1200" role="img" aria-labelledby="skill-loop-title skill-loop-desc">
+<title id="skill-loop-title">build-skills 的构建与验证流程</title>
+<desc id="skill-loop-desc">准备材料后由用户确认，构建首版 Skill 并执行开发场景。开发评估未通过时生成下一版候选 Skill，再重新执行开发场景；通过后验证保留场景，通过才交付，失败则停止并要求新运行和新场景。</desc>
+<defs><style>@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=Geist+Mono&amp;family=Instrument+Serif&amp;display=swap');</style>
+<marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#555b65"/></marker>
+<marker id="arrow-accent" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#f38020"/></marker>
+<marker id="arrow-link" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#2563a6"/></marker>
+</defs>
+<rect width="480" height="1200" fill="#fafaf8"/>
+<text x="40" y="40" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="start">BUILD-SKILLS / WORKFLOW</text>
+<text x="40" y="88" font-family="'Instrument Serif', 'Noto Serif SC', 'Songti SC', serif" font-size="28" font-weight="400" fill="#202124" text-anchor="start">从材料到经过验证的 Skill</text>
+<path d="M156 192 V232" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M156 296 V336" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M156 400 V440" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M156 536 V592" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M156 704 V776" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M156 888 V976" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M272 648 H320" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M380 624 V496 Q380 488 372 488 H272" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M272 832 H320" fill="none" stroke="#555b65" stroke-width="1.2" marker-end="url(#arrow)"/>
+<rect x="282" y="616" width="28" height="24" fill="#fafaf8"/>
+<text x="296" y="636" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">否</text>
+<rect x="182" y="724" width="28" height="24" fill="#fafaf8"/>
+<text x="196" y="744" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">是</text>
+<rect x="282" y="800" width="28" height="24" fill="#fafaf8"/>
+<text x="296" y="820" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">否</text>
+<rect x="182" y="916" width="28" height="24" fill="#fafaf8"/>
+<text x="196" y="936" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">是</text>
+<rect x="40" y="128" width="232" height="64" rx="8" fill="#fafaf8"/>
+<rect x="40" y="128" width="232" height="64" rx="8" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="156" y="156" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">整理材料与标准</text>
+<text x="156" y="180" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">prepare</text>
+<rect x="40" y="232" width="232" height="64" rx="8" fill="#fafaf8"/>
+<rect x="40" y="232" width="232" height="64" rx="8" fill="#fff3e8" stroke="#f38020" stroke-width="1.2"/>
+<text x="156" y="260" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">审阅并确认</text>
+<text x="156" y="284" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">approve</text>
+<rect x="40" y="336" width="232" height="64" rx="8" fill="#fafaf8"/>
+<rect x="40" y="336" width="232" height="64" rx="8" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="156" y="364" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">构建首版 Skill</text>
+<text x="156" y="388" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">build</text>
+<rect x="40" y="440" width="232" height="96" rx="8" fill="#fafaf8"/>
+<rect x="40" y="440" width="232" height="96" rx="8" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="156" y="468" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">运行开发场景</text>
+<text x="156" y="492" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">execute</text>
+<text x="156" y="520" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">多个模型 · 多个场景</text>
+<path d="M156 592 L272 648 L156 704 L40 648 Z" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="156" y="640" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">开发达标？</text>
+<text x="156" y="664" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">evaluate</text>
+<rect x="320" y="624" width="120" height="96" rx="8" fill="#fafaf8"/>
+<rect x="320" y="624" width="120" height="96" rx="8" fill="#fff3e8" stroke="#f38020" stroke-width="1.2"/>
+<text x="380" y="652" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">重构候选</text>
+<text x="380" y="676" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">improve</text>
+<text x="380" y="704" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">生成下一版</text>
+<path d="M156 776 L272 832 L156 888 L40 832 Z" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="156" y="824" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">保留验证通过？</text>
+<text x="156" y="848" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">verify</text>
+<rect x="320" y="800" width="120" height="64" rx="20" fill="#fafaf8"/>
+<rect x="320" y="800" width="120" height="64" rx="20" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="380" y="828" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">停止</text>
+<text x="380" y="852" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">unmet</text>
+<rect x="40" y="976" width="232" height="64" rx="20" fill="#fafaf8"/>
+<rect x="40" y="976" width="232" height="64" rx="20" fill="#ffffff" stroke="#202124" stroke-width="1.2"/>
+<text x="156" y="1004" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="600" fill="#202124" text-anchor="middle">交付准确版本</text>
+<text x="156" y="1028" font-family="'Geist Mono', monospace" font-size="16" font-weight="400" fill="#555b65" text-anchor="middle">deliver</text>
+<text x="380" y="896" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">新运行</text>
+<text x="380" y="924" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="middle">新保留场景</text>
+<text x="40" y="1088" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="start">调用失败或预算耗尽时，循环停止。</text>
+<path d="M40 1120 H440" stroke="#d5d7db" stroke-width="1"/>
+<rect x="40" y="1144" width="24" height="24" rx="4" fill="white" stroke="#202124"/>
+<text x="76" y="1164" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="start">步骤</text>
+<path d="M192 1144 L208 1156 L192 1168 L176 1156 Z" fill="white" stroke="#202124"/>
+<text x="220" y="1164" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="start">判断</text>
+<rect x="320" y="1144" width="32" height="24" rx="12" fill="white" stroke="#202124"/>
+<text x="364" y="1164" font-family="'Geist', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="20" font-weight="400" fill="#555b65" text-anchor="start">结束</text>
+</svg>

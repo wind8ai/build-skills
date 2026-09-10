@@ -7,6 +7,8 @@ name = "build-skills"
 version = "0.1.0"
 description = "Configurable workflows for refining and validating agent skills"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = ["typer>=0.16,<1", "pydantic>=2.10,<3", "jinja2>=3.1,<4", "pyyaml>=6,<7"]
 
@@ -20,7 +22,7 @@ dev = ["pytest>=8,<10", "ruff>=0.11", "mypy>=1.15", "types-PyYAML>=6"]
 packages = ["src/build_skills"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/tests", "/examples", "/docs/README.md", "/docs/cli.md", "/README.md", "/CONTRIBUTING.md", "/pyproject.toml", "/uv.lock"]
+include = ["/src", "/tests", "/examples", "/docs/README.md", "/docs/cli.md", "/docs/intent.md", "/docs/design.md", "/docs/images", "/LICENSE", "/README.md", "/CONTRIBUTING.md", "/pyproject.toml", "/uv.lock"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
