@@ -1,17 +1,27 @@
 # Web example
 
-在仓库根目录运行：
+使用真实模型时，在仓库根目录运行：
 
 ```bash
 uv sync --locked --extra web
-uv run build-skills web --config examples/web/config.toml
+uv run build-skills web
 ```
 
 打开 http://127.0.0.1:8765 。需要其他端口时添加 `--port 8766`。
 
+默认统一模型为 `codex-sol-5.6-high`，调用 Codex 的 `gpt-5.6-sol`、思考等级 `high`，负责构建、评估、重构，以及材料解析和准备。默认执行模型为 `qoder-qwen3.8-flash`，调用 `qodercli` 的 `Qwen3.8-Flash`。模型名称是配置值，实际可用性由本机 CLI 与账号决定。
+
+只演示流程、不调用真实 LLM 时，显式选择合成示例配置：
+
+```bash
+uv run build-skills web --config examples/web/config.toml
+```
+
+两种启动方式共用 Web 流程，但各自保存本地默认配置，演示设置不会覆盖真实模型默认值。
+
 1. 上传本目录的 `materials/copy-text.md`，文本可直接预览。也可上传自己的 PDF、Word 或图片；此时只保存原件，配置模型后才开始解析。
-2. 点击“下一步”，填写目标，选择各阶段的 provider、模型、思考等级、执行模型、Loop 最大轮次、重复次数和最低分数。
-3. 点击“解析并核对材料”。复杂文件交给准备阶段的 Agent；纯文本任务不增加解析模型调用。页面展示每个文件的文字和警告，核对后勾选确认，再点击“采用材料并生成草案”。
+2. 点击“下一步”，填写目标，选择一个统一负责构建、评估、重构的模型，再添加一个或多个执行模型。下拉选择预设；展开“修改模型或思考等级”可自定义。执行模型允许重复，每项还可通过“每项模型的场景重复次数”重复执行。设置 Loop 最大轮次和最低分数。
+3. 点击“解析并核对材料”。复杂文件交给统一构建模型；纯文本任务不增加解析模型调用。页面展示每个文件的文字和警告，核对后勾选确认，再点击“采用材料并生成草案”。
 4. 审阅草案中的范围、标准、来源、开发场景与保留场景；可编辑 JSON。若有 questions，先在范围、标准或场景中落实答案，再清空 questions。勾选已审阅，点击“确认并开始构建”。
 5. 等待开发测评与保留场景验证完成，复制本地交付地址或下载 Skill ZIP 和测评 JSON。刷新页面或从“本地任务”选择任务可继续核对或查看结果。
 
@@ -21,8 +31,11 @@ uv run build-skills web --config examples/web/config.toml
 
 将已有的 Codex/Qoder 配置放入 `.build-skills/` 下，用 `--config` 指向它。配置须满足现有 CLI 的校验规则，包括可读取的初始 materials。Web 新任务会以本次上传材料替换 materials，并创建独立 workspace。可参考 [CLI 配置说明](../../docs/cli.md)。
 
-网页显示本地配置中的 provider，允许填写模型名称和思考等级，并分配准备、构建、评估、改进职责。可选择多个执行模型。不内置容易过期的模型目录；有效模型名称和思考等级由对应 CLI 校验。命令、权限及构建流程的阶段预算、超时和提示模板沿用本地配置。材料解析单独配置超时，默认 600 秒，每个任务最多一个批次调用，不消耗 prepare 或 Loop 的调用次数预算。网页不接收任意命令或凭据。
+网页按两组职责配置模型：构建、评估、重构统一使用一个选择；执行是一个可重复的列表。解析和准备也使用统一模型。执行列表每一项会生成独立的 `executor_1`、`executor_2` 等 provider 引用，即使模型相同也分别记录执行结果和调用预算。比如同一执行模型添加两次，场景重复次数设为 2，则每个场景共执行 4 次。
 
+点击“保存为默认配置”会保存当前模型选择、执行列表、Loop 上限、重复次数、最低分数与解析超时。保存位置显示在网页中，为 `.build-skills/web/defaults/<配置标识>.json`；刷新、重启和新任务会读取它。也可直接编辑此文件，下次读取时校验。不会改写仓库中的预设、启动配置或已有任务快照。
+
+模型候选来自随包预设或 `--config` 指定的 provider；保存的自定义选择也会成为候选。自定义模型仍通过已有可信 Agent 连接调用，网页不能添加任意命令。命令、权限及构建流程的阶段预算、超时和提示模板沿用本地配置。材料解析单独配置超时，默认 600 秒，每个任务最多一个批次调用，不消耗 prepare 或 Loop 的调用次数预算。
 启动前完成相应 CLI 登录。Agent 读取原件时可能将文件文字或图像发送给模型服务；后续运行还会按照 provider 配置发送任务内容及运行证据；“本地”指 Web、文件存储和进程运行位置，不表示模型推理离线。
 
 ## 文件支持
@@ -45,6 +58,7 @@ uv run build-skills web --config examples/web/config.toml
 所有上传原件、提取文本、配置快照、调用证据、草案、测评报告与 ZIP 写入 `.build-skills/web/`，该目录已被 Git 忽略。任务路径以网页显示为准，形如：
 
 ```text
+.build-skills/web/defaults/<配置标识>.json
 .build-skills/web/materials/<material-id>/
 .build-skills/web/jobs/<job-id>/inputs/
 .build-skills/web/jobs/<job-id>/parsing/
