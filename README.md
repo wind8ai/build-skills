@@ -36,7 +36,7 @@ uv sync --locked --extra web
 uv run build-skills web --config examples/web/config.toml
 ```
 
-打开 http://127.0.0.1:8765 ，上传文件、核对提取文字、配置模型和循环参数，审阅草案后开始构建。验证通过后可获取本地交付地址或下载 Skill ZIP；测评结论也可单独下载。支持文本、PDF、Word 和图片文字提取，图片需安装本机 OCR。
+打开 http://127.0.0.1:8765 ，上传原件、配置模型和循环参数，解析并核对材料，再审阅草案并开始构建。验证通过后可获取本地交付地址或下载 Skill ZIP；测评结论也可单独下载。文本直接读取；PDF、Word 和图片交给本地 Agent CLI 解析，实际支持能力取决于配置的模型与工具。
 
 [Web example 与文件支持说明](examples/web/README.md) 包含完整操作流程、真实模型接入和提交边界。示例使用进程替身，所有本地输入与运行产物均保存到被 Git 忽略的 `.build-skills/`。
 
