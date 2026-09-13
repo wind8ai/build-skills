@@ -72,6 +72,19 @@ elif stage == "prepare":
         "development": [scenario("copy", "hello")],
         "holdout": [scenario("new", "new content")],
     }
+    if mode == "questions":
+        result["questions"] = ["Should whitespace be preserved?"]
+    if "previous_brief" in request["context"]:
+        result = request["context"]["previous_brief"]
+        result["criteria"] += [item["answer"] for item in request["context"]["answers"]]
+        result["questions"] = []
+        answers = [item["answer"] for item in request["context"]["answers"]]
+        if "fixture-failure" in answers:
+            sys.exit(7)
+        if "unsure" in answers:
+            result["questions"] = ["Should leading spaces also be preserved?"]
+        if request["context"].get("requested_changes"):
+            result["scope"] = request["context"]["requested_changes"]
 elif stage in ("build", "improve"):
     result = {
         "files": {

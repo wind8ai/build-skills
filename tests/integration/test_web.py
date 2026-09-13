@@ -72,13 +72,13 @@ def test_upload_approve_deliver(client: TestClient) -> None:
     bad = client.post(
         f"/api/jobs/{identifier}/approve",
         headers=HEADERS,
-        json={"brief": state["brief"], "digest": "outdated"},
+        json={"digest": "outdated"},
     )
     assert bad.status_code == 409
     response = client.post(
         f"/api/jobs/{identifier}/approve",
         headers=HEADERS,
-        json={"brief": state["brief"], "digest": state["brief_digest"]},
+        json={"digest": state["brief_digest"]},
     )
     assert response.status_code == 200, response.text
     state = wait(client, identifier)
@@ -171,7 +171,7 @@ def test_complex_files_are_parsed_once_and_reviewed(client: TestClient, tmp_path
     response = client.post(
         f"/api/jobs/{identifier}/approve",
         headers=HEADERS,
-        json={"brief": state["brief"], "digest": state["brief_digest"]},
+        json={"digest": state["brief_digest"]},
     )
     assert response.status_code == 200
     state = wait(client, identifier)

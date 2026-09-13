@@ -90,7 +90,7 @@ def test_saved_choices_drive_all_stages_and_duplicate_executions(tmp_path: Path)
     response = client.post(
         f"/api/jobs/{identifier}/approve",
         headers=headers,
-        json={"brief": state["brief"], "digest": state["brief_digest"]},
+        json={"digest": state["brief_digest"]},
     )
     assert response.status_code == 200
     state = wait()
