@@ -92,15 +92,9 @@ class Workflow:
         self.save()
         return value
 
-    def call(
-        self,
-        stage: str,
-        context: dict[str, Any],
-        schema: dict[str, Any] | None,
-        provider: str | None = None,
-        cwd: Path | None = None,
-        recover_call: int | None = None,
-    ) -> Any:
+    def render_prompt(
+        self, stage: str, context: dict[str, Any], schema: dict[str, Any] | None
+    ) -> str:
         template = self.config.prompts.get(stage)
         if template is None:
             template = files("build_skills.templates").joinpath(stage + ".j2").read_text()
@@ -118,6 +112,18 @@ class Workflow:
             )
         except TemplateError as exc:
             raise ValueError(f"Invalid {stage} prompt template: {exc}") from exc
+        return prompt
+
+    def call(
+        self,
+        stage: str,
+        context: dict[str, Any],
+        schema: dict[str, Any] | None,
+        provider: str | None = None,
+        cwd: Path | None = None,
+        recover_call: int | None = None,
+    ) -> Any:
+        prompt = self.render_prompt(stage, context, schema)
         selected_name = provider or self.config.roles[stage]
         if recover_call is not None:
             if recover_call < 1 or recover_call > self.state["calls"]:
@@ -387,6 +393,47 @@ class Workflow:
                 f"{len(failures)} execution(s) incomplete; all model results retained", code
             )
 
+    def evaluation_contexts(
+        self, criteria: list[str], executions: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Keep complete evidence inline or in local files, within the CLI input ceiling."""
+        from build_skills.models import BatchJudgment
+
+        schema = BatchJudgment.model_json_schema()
+        contexts = []
+        current: list[dict[str, Any]] = []
+        for execution in executions:
+            single = {"criteria": criteria, "executions": [execution]}
+            if len(self.render_prompt("evaluate", single, schema).encode("utf-8")) > 900_000:
+                fingerprint = digest(execution)
+                path = self.root / "evaluation-inputs" / f"{fingerprint}.json"
+                if path.exists():
+                    if digest(read_json(path)) != fingerprint:
+                        raise WorkflowError("测评证据文件已被修改，不能继续评估")
+                else:
+                    write_json(path, execution)
+                execution = {
+                    "label": execution["label"],
+                    "evidence_path": str(path),
+                    "evidence_digest": fingerprint,
+                }
+            candidate: dict[str, Any] = {"criteria": criteria, "executions": [*current, execution]}
+            if len(self.render_prompt("evaluate", candidate, schema).encode("utf-8")) > 900_000:
+                if current:
+                    contexts.append({"criteria": criteria, "executions": current})
+                current = [execution]
+                candidate = {"criteria": criteria, "executions": current}
+                if len(self.render_prompt("evaluate", candidate, schema).encode("utf-8")) > 900_000:
+                    raise WorkflowError(
+                        f"测评场景 {execution['label']} 的标准或提示模板超过输入上限；"
+                        "请缩小标准或模板后重新运行。未截断证据。"
+                    )
+            else:
+                current = candidate["executions"]
+        if current:
+            contexts.append({"criteria": criteria, "executions": current})
+        return contexts
+
     def evaluate(self, holdout: bool = False) -> None:
         from build_skills.models import BatchJudgment
 
@@ -413,24 +460,38 @@ class Workflow:
         candidates = {f"case-{i}": r for i, r in enumerate(records) if r["status"] == "completed"}
         scored = {}
         if candidates:
-            context = {
-                "criteria": brief.criteria,
-                "executions": [
-                    {
-                        "label": label,
-                        "task": r["task"],
-                        "output": r["output"],
-                        "observation": r["observation"],
-                    }
-                    for label, r in candidates.items()
-                ],
-            }
-            batch = BatchJudgment.model_validate(
-                self.call("evaluate", context, BatchJudgment.model_json_schema())
-            )
-            scored = {item.label: item for item in batch.results}
-            if len(scored) != len(batch.results) or set(scored) != set(candidates):
-                raise WorkflowError("Judge returned missing, duplicate or unknown labels")
+            executions = [
+                {
+                    "label": label,
+                    "task": r["task"],
+                    "output": r["output"],
+                    "observation": r["observation"],
+                }
+                for label, r in candidates.items()
+            ]
+            contexts = self.evaluation_contexts(brief.criteria, executions)
+            for context in contexts:
+                key = f"{prefix}-judgments-{number}-{digest(context)}"
+                if key in self.state["artifacts"]:
+                    batch = BatchJudgment.model_validate(self.artifact(key))
+                else:
+                    batch = BatchJudgment.model_validate(
+                        self.call("evaluate", context, BatchJudgment.model_json_schema())
+                    )
+                for item in context["executions"]:
+                    if (
+                        "evidence_path" in item
+                        and digest(read_json(Path(item["evidence_path"])))
+                        != (item["evidence_digest"])
+                    ):
+                        raise WorkflowError("评估模型修改了证据文件，不能采用判断结果")
+                received = {item.label: item for item in batch.results}
+                expected_labels = {item["label"] for item in context["executions"]}
+                if len(received) != len(batch.results) or set(received) != expected_labels:
+                    raise WorkflowError("Judge returned missing, duplicate or unknown labels")
+                if key not in self.state["artifacts"]:
+                    self.store(key, batch.model_dump())
+                scored.update(received)
         judgments = []
         for i, r in enumerate(records):
             if r["status"] != "completed":
