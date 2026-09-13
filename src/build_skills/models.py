@@ -96,3 +96,14 @@ class LabeledJudgment(Judgment):
 
 class BatchJudgment(Document):
     results: list[LabeledJudgment]
+
+
+class ParsedMaterial(Document):
+    source: str = Field(min_length=1)
+    text: str
+    status: Literal["complete", "partial", "unsupported"]
+    warnings: list[str]
+
+
+class MaterialParsing(Document):
+    files: list[ParsedMaterial] = Field(min_length=1, max_length=20)

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from build_skills.config import canonical, digest
-from build_skills.models import BatchJudgment, Brief, Provider
+from build_skills.models import BatchJudgment, Brief, Document, MaterialParsing, Provider
 from build_skills.providers import codex, qoder
 from build_skills.workspace import WorkflowError, read_json, read_skill_directory, write_json
 
@@ -120,8 +120,11 @@ def _collect_result(
         response = cwd / "response.json"
         if not response.is_file():
             raise WorkflowError("Agent did not create response.json; raw output retained")
+        if stage == "parse" and response.stat().st_size > 10_000_000:
+            raise WorkflowError("Material response exceeds 10 MB; split the input")
         try:
-            model = Brief if stage == "prepare" else BatchJudgment
+            models: dict[str, type[Document]] = {"prepare": Brief, "parse": MaterialParsing}
+            model = models.get(stage, BatchJudgment)
             return model.model_validate(read_json(response)).model_dump()
         except (ValueError, OSError) as exc:
             raise WorkflowError("Invalid response.json; raw output retained") from exc

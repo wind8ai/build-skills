@@ -18,8 +18,13 @@ from pydantic import Field
 
 from build_skills.config import Config, digest, load_config
 from build_skills.models import Brief, Document
-from build_skills.web.materials import SUPPORTED, extract
-from build_skills.workspace import read_json, safe_path, write_json
+from build_skills.web.materials import (
+    SUPPORTED,
+    accept_materials,
+    parse_materials,
+    record_upload,
+)
+from build_skills.workspace import locked, read_json, safe_path, write_json
 
 
 class Selection(Document):
@@ -37,6 +42,11 @@ class Settings(Document):
     max_rounds: int = Field(ge=1, le=100)
     repetitions: int = Field(ge=1, le=20)
     minimum_score: float = Field(ge=0, le=1)
+    parsing_timeout_seconds: float = Field(default=600, gt=0, le=7200, allow_inf_nan=False)
+
+
+class MaterialApproval(Document):
+    digest: str
 
 
 class Approval(Document):
@@ -138,7 +148,7 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
             "goal": base.goal,
             "name": base.name,
             "storage": str(root),
-            "ocr": bool(shutil.which("tesseract")),
+            "parsing_timeout_seconds": 600,
         }
 
     @app.post("/api/materials")
@@ -160,21 +170,16 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
                 ):
                     raise ValueError(f"文件名或类型不支持：{name}")
                 content = file.file.read(10_000_001)
+                if not content:
+                    raise ValueError(f"文件为空：{name}")
                 total += len(content)
                 if len(content) > 10_000_000 or total > 50_000_000:
                     raise ValueError("单文件最多 10 MB，总大小最多 50 MB")
                 original = folder / f"{index}{Path(name).suffix.lower()}"
                 original.write_bytes(content)
-                try:
-                    text = extract(original)
-                except Exception as exc:
-                    raise ValueError(f"{name}：{exc}") from exc
-                target = folder / "text" / f"{index}-{name}.txt"
-                target.parent.mkdir(exist_ok=True)
-                target.write_text(text)
-                entries.append({"name": name, "text": text, "bytes": len(content)})
-            if sum(len(item["text"].encode()) for item in entries) > 5_000_000:
-                raise ValueError("提取文字总量最多 5 MB")
+                entries.append(record_upload(original, name))
+            if sum(len(item["text"].encode()) for item in entries if item["text"]) > 5_000_000:
+                raise ValueError("文本总量最多 5 MB")
             write_json(folder / "manifest.json", entries)
         except Exception:
             shutil.rmtree(folder)
@@ -199,20 +204,27 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
         identifier = uuid.uuid4().hex
         job = root / "jobs" / identifier
         config.workspace = str(job / "runs")
-        config.materials = [str(material / "text")]
+        config.materials = [str(job / "text")]
         config = Config.model_validate(config.model_dump())
         job.mkdir(parents=True, mode=0o700)
+        (job / "text").mkdir()
         try:
+            sources = read_json(material / "manifest.json")
+            (job / "inputs").mkdir()
+            for source in sources:
+                shutil.copyfile(
+                    safe_path(material, source["source"]),
+                    safe_path(job / "inputs", source["source"]),
+                )
+            write_json(job / "sources.json", sources)
             (job / "config.toml").write_text(tomli_w.dumps(config.model_dump(exclude_none=True)))
             load_config(job / "config.toml")
         except Exception:
             shutil.rmtree(job)
             raise
         write_json(job / "settings.json", settings.model_dump())
-        from build_skills.workflow import Workflow
-
-        Workflow(config, identifier).load(create=True)
-        start(job, lambda: invoke(job, "loop"))
+        write_json(job / "result.json", {"status": "parsing"})
+        start(job, lambda: parse_materials(job, config, settings.parsing_timeout_seconds))
         return {"id": identifier}
 
     @app.get("/api/jobs")
@@ -231,6 +243,14 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
         job = directory(identifier)
         run = job / "runs" / identifier
         result = read_json(job / "result.json") if (job / "result.json").exists() else {}
+        if (job / "parsing/state.json").exists() and not result.get("error"):
+            result.update(read_json(job / "parsing/state.json"))
+        if (job / "parsing/result.json").exists():
+            result["parsing"] = read_json(job / "parsing/result.json")
+            result["parsing_digest"] = digest(result["parsing"])
+        if (job / "parsing/call/attempt.json").exists():
+            result["parsing_attempt"] = read_json(job / "parsing/call/attempt.json")
+        result["materials_approved"] = (job / "parsing/approval.json").exists()
         if (run / "state.json").exists():
             result.update(read_json(run / "state.json"))
         result.update(id=identifier, busy=identifier in active, path=str(run))
@@ -240,12 +260,40 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
         result["reports"] = {p.stem: read_json(p) for p in run.glob("*-report-*.json")}
         return result
 
+    @app.post("/api/jobs/{identifier}/accept-materials")
+    def confirm_materials(identifier: str, approval: MaterialApproval) -> Any:
+        job = directory(identifier)
+        if identifier in active:
+            raise HTTPException(409, "任务正在执行")
+        if not (job / "parsing/result.json").exists():
+            raise HTTPException(409, "材料尚未完成解析")
+        if digest(read_json(job / "parsing/result.json")) != approval.digest:
+            raise HTTPException(409, "材料解析结果已变化，请刷新")
+        if (job / "parsing/approval.json").exists():
+            raise HTTPException(409, "材料已经确认")
+
+        def proceed() -> None:
+            from build_skills.workflow import Workflow
+
+            with locked(job):
+                if (job / "parsing/approval.json").exists():
+                    raise ValueError("材料已经确认")
+                accept_materials(job, approval.digest)
+                config = load_config(job / "config.toml")
+                Workflow(config, identifier).load(create=True)
+            invoke(job, "loop")
+
+        start(job, proceed)
+        return {"id": identifier}
+
     @app.post("/api/jobs/{identifier}/approve")
     def approve(identifier: str, approval: Approval) -> Any:
         job = directory(identifier)
         if identifier in active:
             raise HTTPException(409, "任务正在执行")
         run = job / "runs" / identifier
+        if not (run / "state.json").exists():
+            raise HTTPException(409, "请先核对材料并生成草案")
         state = read_json(run / "state.json")
         if state["round"] or state.get("approval"):
             raise ValueError("已经确认或开始构建，请新建任务")
@@ -266,6 +314,8 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
     @app.post("/api/jobs/{identifier}/resume")
     def resume(identifier: str) -> Any:
         job = directory(identifier)
+        if not (job / "runs" / identifier / "state.json").exists():
+            raise HTTPException(409, "请先核对材料；解析失败需要新建任务")
         start(job, lambda: invoke(job, "loop"))
         return {"id": identifier}
 
@@ -275,6 +325,8 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
         if identifier in active:
             raise HTTPException(409, "任务正在执行")
         run = job / "runs" / identifier
+        if not (run / "state.json").exists():
+            raise HTTPException(409, "任务尚未开始构建")
         state = read_json(run / "state.json")
         if state.get("status") != "delivered":
             raise HTTPException(409, "只有通过验证的 Skill 才能下载交付包")
