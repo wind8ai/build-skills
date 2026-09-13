@@ -14,9 +14,8 @@ import tomli_w
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import Field
 
-from build_skills.config import Config, digest, load_config
+from build_skills.config import digest, load_config
 from build_skills.models import Brief, Document
 from build_skills.web.materials import (
     SUPPORTED,
@@ -24,25 +23,16 @@ from build_skills.web.materials import (
     parse_materials,
     record_upload,
 )
+from build_skills.web.settings import (
+    ModelDefaults,
+    Settings,
+    catalog,
+    defaults,
+    task_config,
+    validate_defaults,
+    web_base,
+)
 from build_skills.workspace import locked, read_json, safe_path, write_json
-
-
-class Selection(Document):
-    model: str = ""
-    reasoning_effort: str | None = None
-
-
-class Settings(Document):
-    material: str
-    name: str = Field(pattern=r"^[a-zA-Z0-9_-]+$")
-    goal: str = Field(min_length=1)
-    providers: dict[str, Selection]
-    roles: dict[str, str]
-    models: list[str] = Field(min_length=1)
-    max_rounds: int = Field(ge=1, le=100)
-    repetitions: int = Field(ge=1, le=20)
-    minimum_score: float = Field(ge=0, le=1)
-    parsing_timeout_seconds: float = Field(default=600, gt=0, le=7200, allow_inf_nan=False)
 
 
 class MaterialApproval(Document):
@@ -54,9 +44,11 @@ class Approval(Document):
     digest: str
 
 
-def create_app(config_path: Path, data_root: Path) -> FastAPI:
-    base = load_config(config_path)
+def create_app(config_path: Path | None, data_root: Path) -> FastAPI:
     root = data_root.resolve()
+    base = web_base(config_path, root)
+    key = digest(str(config_path.resolve()) if config_path else "builtin")[:16]
+    defaults_path = root / "defaults" / f"{key}.json"
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     active: set[str] = set()
@@ -135,21 +127,22 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
 
     @app.get("/api/options")
     def options() -> Any:
-        return {
-            "providers": {
-                name: {"kind": p.kind, "model": p.model, "reasoning_effort": p.reasoning_effort}
-                for name, p in base.providers.items()
-            },
-            "roles": base.roles,
-            "models": base.execution.models,
-            "max_rounds": base.limits.max_rounds,
-            "repetitions": base.execution.repetitions,
-            "minimum_score": base.quality.minimum_score,
+        selected = defaults(base, defaults_path)
+        return selected.model_dump() | {
+            "catalog": catalog(base, selected),
+            "connections": {name: {"kind": p.kind} for name, p in base.providers.items()},
             "goal": base.goal,
             "name": base.name,
             "storage": str(root),
-            "parsing_timeout_seconds": 600,
+            "defaults_path": str(defaults_path),
         }
+
+    @app.put("/api/defaults")
+    def save_defaults(selected: ModelDefaults) -> Any:
+        validate_defaults(base, selected)
+        with locked(defaults_path.parent):
+            write_json(defaults_path, selected.model_dump())
+        return options()
 
     @app.post("/api/materials")
     def upload(files: Annotated[list[UploadFile], File()]) -> Any:
@@ -189,23 +182,11 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
     @app.post("/api/jobs")
     def create(settings: Settings) -> Any:
         material = directory(settings.material, "materials")
-        if set(settings.providers) != set(base.providers):
-            raise ValueError("模型配置必须与本地模板一致")
-        config = base.model_copy(deep=True)
-        config.name, config.goal = settings.name, settings.goal
-        config.roles = settings.roles
-        config.execution.models = settings.models
-        config.execution.repetitions = settings.repetitions
-        config.limits.max_rounds = settings.max_rounds
-        config.quality.minimum_score = settings.minimum_score
-        for name, selection in settings.providers.items():
-            config.providers[name].model = selection.model
-            config.providers[name].reasoning_effort = selection.reasoning_effort
+        config = task_config(base, settings)
         identifier = uuid.uuid4().hex
         job = root / "jobs" / identifier
         config.workspace = str(job / "runs")
         config.materials = [str(job / "text")]
-        config = Config.model_validate(config.model_dump())
         job.mkdir(parents=True, mode=0o700)
         (job / "text").mkdir()
         try:
@@ -242,6 +223,7 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
     def status(identifier: str) -> Any:
         job = directory(identifier)
         run = job / "runs" / identifier
+        was_active = identifier in active
         result = read_json(job / "result.json") if (job / "result.json").exists() else {}
         if (job / "parsing/state.json").exists() and not result.get("error"):
             result.update(read_json(job / "parsing/state.json"))
@@ -253,7 +235,8 @@ def create_app(config_path: Path, data_root: Path) -> FastAPI:
         result["materials_approved"] = (job / "parsing/approval.json").exists()
         if (run / "state.json").exists():
             result.update(read_json(run / "state.json"))
-        result.update(id=identifier, busy=identifier in active, path=str(run))
+        result.update(id=identifier, busy=was_active or identifier in active, path=str(run))
+        result["settings"] = read_json(job / "settings.json")
         if (run / "brief.json").exists():
             result["brief"] = read_json(run / "brief.json")
             result["brief_digest"] = digest(result["brief"])

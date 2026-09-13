@@ -130,7 +130,7 @@ for stage in (
 
 @app.command()
 def web(
-    config: ConfigPath,
+    config: Annotated[Path | None, typer.Option("--config")] = None,
     port: Annotated[int, typer.Option(min=1024, max=65535)] = 8765,
 ) -> None:
     """Open a local web workbench using a trusted provider configuration."""

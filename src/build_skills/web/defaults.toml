@@ -1,0 +1,29 @@
+# Shipped Web defaults. Personal edits are saved under .build-skills/web/.
+[providers."codex-sol-5.6-high"]
+kind = "codex"
+command = ["codex"]
+model = "gpt-5.6-sol"
+reasoning_effort = "high"
+permission = "restricted"
+
+[providers."qoder-qwen3.8-flash"]
+kind = "qoder"
+command = ["qodercli"]
+model = "Qwen3.8-Flash"
+permission = "restricted"
+
+[roles]
+prepare = "codex-sol-5.6-high"
+build = "codex-sol-5.6-high"
+evaluate = "codex-sol-5.6-high"
+improve = "codex-sol-5.6-high"
+
+[execution]
+models = ["qoder-qwen3.8-flash"]
+repetitions = 1
+
+[limits]
+max_rounds = 3
+
+[quality]
+minimum_score = 0.8

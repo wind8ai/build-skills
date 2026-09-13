@@ -33,30 +33,52 @@ $('drop').ondragleave=()=>$('drop').classList.remove('drag');
 $('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('drag');upload(e.dataTransfer.files);};
 document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>show(Number(b.dataset.step)));
 $('configure').onclick=()=>show(1);
-$('new').onclick=()=>{job=null;current=null;material=null;$('materials').replaceChildren();$('configure').disabled=true;$('files').value='';$('error').hidden=true;$('history').value='';$('upload-state').textContent='文本可直接预览；复杂文件配置模型后解析。';history.replaceState(null,'',location.pathname);show(0);};
+$('new').onclick=async()=>{try{options=await api('options');renderOptions();}catch(e){error(e);return;}job=null;current=null;material=null;$('materials').replaceChildren();$('configure').disabled=true;$('files').value='';$('error').hidden=true;$('history').value='';$('upload-state').textContent='文本可直接预览；复杂文件配置模型后解析。';history.replaceState(null,'',location.pathname);show(0);};
+function readChoice(row) {
+  return {provider:row.querySelector('[data-connection]').value,model:row.querySelector('[data-model]').value,reasoning_effort:row.querySelector('[data-effort]').value||null};
+}
+function modelRow(selected, execution=false) {
+  const row=document.createElement('div');row.className='model-choice';
+  const label=text('label',execution?'执行模型':'统一模型');
+  const select=document.createElement('select');select.setAttribute('aria-label',execution?'选择执行模型':'选择构建、评估和重构模型');
+  options.catalog.forEach((p,i)=>{const o=text('option',p.label);o.value=String(i);select.append(o);});
+  const custom=text('option','自定义模型');custom.value='custom';select.append(custom);label.append(select);row.append(label);
+  const details=document.createElement('details');details.append(text('summary','修改模型或思考等级'));
+  const fields=document.createElement('div');fields.className='model-fields';
+  const connectionLabel=text('label','Agent 连接');const connection=document.createElement('select');connection.dataset.connection='';
+  for(const [name,p] of Object.entries(options.connections)){const option=text('option',`${name} (${p.kind})`);option.value=name;connection.append(option);}connectionLabel.append(connection);
+  const modelLabel=text('label','模型名称');const model=document.createElement('input');model.dataset.model='';model.setAttribute('list','model-names');modelLabel.append(model);
+  const effortLabel=text('label','思考等级');const effort=document.createElement('input');effort.dataset.effort='';effort.setAttribute('list','reasoning-levels');effort.placeholder='使用 Agent 默认值';effort.pattern='[a-z][a-z0-9_-]*';effortLabel.append(effort);
+  fields.append(connectionLabel,modelLabel,effortLabel);details.append(fields);row.append(details);
+  function assign(value){connection.value=value.provider;model.value=value.model;effort.value=value.reasoning_effort||'';model.required=options.connections[value.provider].kind!=='command';}
+  assign(selected);
+  const index=options.catalog.findIndex(p=>p.provider===selected.provider&&p.model===selected.model&&(p.reasoning_effort||null)===(selected.reasoning_effort||null));select.value=index<0?'custom':String(index);
+  select.onchange=()=>{if(select.value==='custom'){details.open=true;}else assign(options.catalog[Number(select.value)]);};
+  for(const field of [connection,model,effort])field.oninput=()=>{select.value='custom';model.required=options.connections[connection.value].kind!=='command';};
+  if(execution){const actions=document.createElement('div');actions.className='model-actions';const copy=text('button','重复此模型');copy.type='button';copy.className='secondary';copy.onclick=()=>addExecutor(readChoice(row));const remove=text('button','移除');remove.type='button';remove.className='secondary';remove.onclick=()=>{row.remove();};actions.append(copy,remove);row.append(actions);}
+  return row;
+}
+function addExecutor(selected){if($('executor-models').children.length>=20){error(Error('最多选择 20 项执行模型'));return;}$('executor-models').append(modelRow(selected,true));}
 function renderOptions() {
   $('name').value=options.name;$('goal').value=options.goal;$('rounds').value=options.max_rounds;$('repetitions').value=options.repetitions;$('score').value=options.minimum_score;$('parsing-timeout').value=options.parsing_timeout_seconds;
-  for(const [name,p] of Object.entries(options.providers)){
-    const panel=document.createElement('div');panel.className='panel provider';
-    const title=text('div',name);title.append(text('small',p.kind==='command'?'演示替身 / 非真实模型':p.kind));
-    const modelLabel=text('label','LLM 模型');const input=document.createElement('input');input.value=p.model;input.dataset.model=name;input.required=p.kind!=='command';input.disabled=p.kind==='command';modelLabel.append(input);
-    const effortLabel=text('label','思考等级');const effort=document.createElement('input');effort.value=p.reasoning_effort||'';effort.placeholder='默认 / 如 high';effort.dataset.effort=name;effort.pattern='[a-z][a-z0-9_-]*';effort.disabled=p.kind==='command';effortLabel.append(effort);
-    panel.append(title,modelLabel,effortLabel);$('providers').append(panel);
-  }
-  for(const [role,label] of Object.entries({prepare:'准备',build:'构建',evaluate:'评估',improve:'改进'})){
-    const l=text('label',label);const select=document.createElement('select');select.dataset.role=role;
-    for(const name of Object.keys(options.providers)){const o=text('option',name);o.value=name;select.append(o);}select.value=options.roles[role];l.append(select);$('roles').append(l);
-  }
-  const group=document.createElement('div');group.append(text('label','执行测评的模型（至少一个）'));
-  for(const name of Object.keys(options.providers)){const l=text('label',name);l.className='check';const c=document.createElement('input');c.type='checkbox';c.dataset.execution=name;c.checked=options.models.includes(name);l.prepend(c);group.append(l);}$('roles').append(group);
+  $('model-names').replaceChildren(...[...new Set(options.catalog.map(p=>p.model).filter(Boolean))].map(value=>{const o=document.createElement('option');o.value=value;return o;}));
+  $('builder-model').replaceChildren(modelRow(options.builder));$('executor-models').replaceChildren();options.executors.forEach(addExecutor);
 }
+function modelDefaults(){
+  const executors=[...$('executor-models').children].map(readChoice);if(!executors.length)throw Error('至少添加一个执行模型');
+  return {builder:readChoice($('builder-model').firstChild),executors,max_rounds:Number($('rounds').value),repetitions:Number($('repetitions').value),minimum_score:Number($('score').value),parsing_timeout_seconds:Number($('parsing-timeout').value)};
+}
+$('add-executor').onclick=()=>addExecutor(options.executors[0]);
+$('save-defaults').onclick=async()=>{
+  if(!$('settings').reportValidity())return;
+  $('save-defaults').disabled=true;$('error').hidden=true;
+  try{const name=$('name').value,goal=$('goal').value;options=await api('defaults',{method:'PUT',body:JSON.stringify(modelDefaults())});renderOptions();$('name').value=name;$('goal').value=goal;$('defaults-status').textContent=`默认配置已保存到本机：${options.defaults_path}`;}
+  catch(e){error(e);}finally{$('save-defaults').disabled=false;}
+};
 $('settings').onsubmit=async e=>{
   e.preventDefault();$('prepare').disabled=true;$('error').hidden=true;
   try{
-    const providers={};document.querySelectorAll('[data-model]').forEach(el=>providers[el.dataset.model]={model:el.value});document.querySelectorAll('[data-effort]').forEach(el=>providers[el.dataset.effort].reasoning_effort=el.value||null);
-    const roles={};document.querySelectorAll('[data-role]').forEach(el=>roles[el.dataset.role]=el.value);
-    const models=[...document.querySelectorAll('[data-execution]:checked')].map(el=>el.dataset.execution);if(!models.length)throw Error('至少选择一个执行模型');
-    const result=await api('jobs',{method:'POST',body:JSON.stringify({material:material.id,name:$('name').value,goal:$('goal').value,providers,roles,models,max_rounds:Number($('rounds').value),repetitions:Number($('repetitions').value),minimum_score:Number($('score').value),parsing_timeout_seconds:Number($('parsing-timeout').value)})});
+    const result=await api('jobs',{method:'POST',body:JSON.stringify({...modelDefaults(),material:material.id,name:$('name').value,goal:$('goal').value})});
     job=result.id;current=null;$('review').hidden=true;$('material-review').hidden=true;$('review-status').textContent='正在解析材料…';history.replaceState(null,'',`?job=${job}`);show(2);await refresh();await listJobs();
   }catch(e){error(e);}finally{$('prepare').disabled=false;}
 };
@@ -100,7 +122,7 @@ async function refresh(){
   $('delivery').hidden=state.status!=='delivered';$('delivery-path').value=state.delivery||'';$('download').href=`/api/jobs/${job}/download`;
   $('report-download').hidden=!Object.keys(state.reports||{}).length;$('report-download').href=`/api/jobs/${job}/report`;
   $('resume').hidden=state.busy||state.status==='delivered'||!state.approval;
-  $('details').textContent=JSON.stringify({run:state.run,path:state.path,status:state.status,error:state.error,usage:state.usage,parsing_attempt:state.parsing_attempt},null,2);
+  $('details').textContent=JSON.stringify({run:state.run,path:state.path,status:state.status,error:state.error,usage:state.usage,parsing_attempt:state.parsing_attempt,models:state.settings?{builder:state.settings.builder,executors:state.settings.executors,repetitions:state.settings.repetitions}:null},null,2);
 }
 (async()=>{try{options=await api('options');$('connection').textContent='本地连接已就绪';renderOptions();job=new URLSearchParams(location.search).get('job');await listJobs();if(job){await refresh();show(!current.approval?2:3);}else show(0);}catch(e){error(e);$('connection').textContent='连接失败';}})();
 setInterval(()=>refresh().catch(error),2000);
