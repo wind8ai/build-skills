@@ -126,3 +126,21 @@ for stage in (
     "feedback",
 ):
     register_stage(stage)
+
+
+@app.command()
+def web(
+    config: ConfigPath,
+    port: Annotated[int, typer.Option(min=1024, max=65535)] = 8765,
+) -> None:
+    """Open a local web workbench using a trusted provider configuration."""
+    try:
+        import uvicorn
+
+        from build_skills.web.server import create_app
+    except ImportError as exc:
+        typer.echo("Install web dependencies: uv sync --extra web", err=True)
+        raise typer.Exit(2) from exc
+    application = create_app(config, Path.cwd() / ".build-skills" / "web")
+    typer.echo(f"Web workbench: http://127.0.0.1:{port}")
+    uvicorn.run(application, host="127.0.0.1", port=port)
