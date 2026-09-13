@@ -40,13 +40,17 @@ def test_upload_approve_deliver(client: TestClient) -> None:
     options = client.get("/api/options").json()
     settings = {
         key: options[key]
-        for key in ("name", "goal", "roles", "models", "max_rounds", "repetitions", "minimum_score")
+        for key in (
+            "name",
+            "goal",
+            "builder",
+            "executors",
+            "max_rounds",
+            "repetitions",
+            "minimum_score",
+        )
     }
     settings["material"] = material["id"]
-    settings["providers"] = {
-        name: {"model": p["model"], "reasoning_effort": p["reasoning_effort"]}
-        for name, p in options["providers"].items()
-    }
     response = client.post("/api/jobs", headers=HEADERS, json=settings)
     assert response.status_code == 200, response.text
     identifier = response.json()["id"]
@@ -115,14 +119,18 @@ def create_job(client: TestClient, files: list, timeout: float = 600) -> str:
     options = client.get("/api/options").json()
     settings = {
         key: options[key]
-        for key in ("name", "goal", "roles", "models", "max_rounds", "repetitions", "minimum_score")
+        for key in (
+            "name",
+            "goal",
+            "builder",
+            "executors",
+            "max_rounds",
+            "repetitions",
+            "minimum_score",
+        )
     }
     settings["material"] = material["id"]
     settings["parsing_timeout_seconds"] = timeout
-    settings["providers"] = {
-        name: {"model": p["model"], "reasoning_effort": p["reasoning_effort"]}
-        for name, p in options["providers"].items()
-    }
     response = client.post("/api/jobs", headers=HEADERS, json=settings)
     assert response.status_code == 200, response.text
     return response.json()["id"]
