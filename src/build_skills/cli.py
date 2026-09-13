@@ -131,16 +131,26 @@ for stage in (
 @app.command()
 def web(
     config: Annotated[Path | None, typer.Option("--config")] = None,
-    port: Annotated[int, typer.Option(min=1024, max=65535)] = 8765,
+    port: Annotated[int, typer.Option(min=1024, max=65535)] = 8321,
 ) -> None:
     """Open a local web workbench using a trusted provider configuration."""
     try:
         import uvicorn
 
+        from build_skills.web.listener import bind_listener
         from build_skills.web.server import create_app
     except ImportError as exc:
         typer.echo("Install web dependencies: uv sync --extra web", err=True)
         raise typer.Exit(2) from exc
-    application = create_app(config, Path.cwd() / ".build-skills" / "web")
-    typer.echo(f"Web workbench: http://127.0.0.1:{port}")
-    uvicorn.run(application, host="127.0.0.1", port=port)
+    ports = range(8321, 8325) if port == 8321 else [port]
+    try:
+        listener = bind_listener(ports)
+    except OSError as exc:
+        typer.echo(f"Web 启动失败：{exc.strerror or exc}", err=True)
+        raise typer.Exit(2) from exc
+    with listener:
+        application = create_app(config, Path.cwd() / ".build-skills" / "web")
+        selected = listener.getsockname()[1]
+        typer.echo(f"Web workbench: http://127.0.0.1:{selected}")
+        server = uvicorn.Server(uvicorn.Config(application, host="127.0.0.1", port=selected))
+        server.run(sockets=[listener])
