@@ -51,6 +51,18 @@ def test_upload_approve_deliver(client: TestClient) -> None:
     assert response.status_code == 200, response.text
     identifier = response.json()["id"]
     state = wait(client, identifier)
+    assert state["status"] == "awaiting_material_approval", state
+    assert state["parsing"]["calls"] == 0
+    assert (
+        client.post(f"/api/jobs/{identifier}/resume", headers=HEADERS, json={}).status_code == 409
+    )
+    response = client.post(
+        f"/api/jobs/{identifier}/accept-materials",
+        headers=HEADERS,
+        json={"digest": state["parsing_digest"]},
+    )
+    assert response.status_code == 200, response.text
+    state = wait(client, identifier)
     assert state["status"] == "awaiting_approval", state
     assert client.get(f"/api/jobs/{identifier}/download").status_code == 409
     bad = client.post(
@@ -89,7 +101,6 @@ def test_local_boundary_and_bad_upload(client: TestClient) -> None:
     for name, content in [
         ("../notes.md", b"hello"),
         ("empty.txt", b""),
-        ("bad.pdf", b"not a pdf"),
         ("data.bin", b"binary"),
     ]:
         response = client.post("/api/materials", headers=HEADERS, files={"files": (name, content)})
@@ -97,16 +108,109 @@ def test_local_boundary_and_bad_upload(client: TestClient) -> None:
     assert client.get("/api/jobs/not-an-id").status_code == 404
 
 
-def test_docx_conversion(client: TestClient) -> None:
-    from docx import Document
-
-    document = Document()
-    document.add_paragraph("Synthetic instructions")
-    document.add_table(rows=1, cols=1).cell(0, 0).text = "Expected output"
-    stream = io.BytesIO()
-    document.save(stream)
-    response = client.post(
-        "/api/materials", headers=HEADERS, files={"files": ("sample.docx", stream.getvalue())}
-    )
+def create_job(client: TestClient, files: list, timeout: float = 600) -> str:
+    response = client.post("/api/materials", headers=HEADERS, files=files)
     assert response.status_code == 200, response.text
-    assert response.json()["files"][0]["text"] == "Synthetic instructions\nExpected output"
+    material = response.json()
+    options = client.get("/api/options").json()
+    settings = {
+        key: options[key]
+        for key in ("name", "goal", "roles", "models", "max_rounds", "repetitions", "minimum_score")
+    }
+    settings["material"] = material["id"]
+    settings["parsing_timeout_seconds"] = timeout
+    settings["providers"] = {
+        name: {"model": p["model"], "reasoning_effort": p["reasoning_effort"]}
+        for name, p in options["providers"].items()
+    }
+    response = client.post("/api/jobs", headers=HEADERS, json=settings)
+    assert response.status_code == 200, response.text
+    return response.json()["id"]
+
+
+def test_complex_files_are_parsed_once_and_reviewed(client: TestClient, tmp_path: Path) -> None:
+    identifier = create_job(
+        client,
+        [
+            ("files", ("notes.txt", b"Original text")),
+            ("files", ("reference.pdf", b"synthetic PDF fixture")),
+            ("files", ("reference.docx", b"synthetic Word fixture")),
+            ("files", ("reference.png", b"synthetic image fixture")),
+        ],
+    )
+    state = wait(client, identifier)
+    assert state["status"] == "awaiting_material_approval", state
+    assert state["parsing"]["calls"] == 1
+    assert len(state["parsing"]["files"]) == 4
+    assert state["parsing"]["files"][0]["text"] == "Original text"
+    assert state["parsing"]["files"][1]["status"] == "partial"
+    assert state["parsing"]["files"][1]["warnings"]
+    assert not (Path(state["path"]) / "state.json").exists()
+    response = client.post(
+        f"/api/jobs/{identifier}/accept-materials", headers=HEADERS, json={"digest": "stale"}
+    )
+    assert response.status_code == 409
+    # A new app instance can recover the review without calling the parser again.
+    client = TestClient(create_app(ROOT / "examples/local-files/config.toml", tmp_path))
+    response = client.post(
+        f"/api/jobs/{identifier}/accept-materials",
+        headers=HEADERS,
+        json={"digest": state["parsing_digest"]},
+    )
+    assert response.status_code == 200
+    state = wait(client, identifier)
+    assert state["status"] == "awaiting_approval", state
+    response = client.post(
+        f"/api/jobs/{identifier}/approve",
+        headers=HEADERS,
+        json={"brief": state["brief"], "digest": state["brief_digest"]},
+    )
+    assert response.status_code == 200
+    state = wait(client, identifier)
+    assert state["status"] == "delivered", state
+    assert state["parsing"]["calls"] == 1
+    job = tmp_path / "jobs" / identifier
+    assert len(list((job / "parsing").glob("call/attempt.json"))) == 1
+    assert (job / "text/1.pdf.md").read_text() == "Synthetic parsed text. Copy exactly."
+    assert (
+        client.post(
+            f"/api/jobs/{identifier}/accept-materials",
+            headers=HEADERS,
+            json={"digest": state["parsing_digest"]},
+        ).status_code
+        == 409
+    )
+
+
+@pytest.mark.parametrize(
+    "mode", ["parse-unsupported", "parse-missing", "parse-duplicate", "parse-mutate", "timeout"]
+)
+def test_failed_parsing_never_starts_workflow(tmp_path: Path, mode: str) -> None:
+    import tomli_w
+
+    from build_skills.config import load_config
+
+    config = load_config(ROOT / "examples/local-files/config.toml")
+    config.providers[config.roles["prepare"]].command.append(mode)
+    path = tmp_path / "config.toml"
+    path.write_text(tomli_w.dumps(config.model_dump(exclude_none=True)))
+    client = TestClient(create_app(path, tmp_path / "data"))
+    identifier = create_job(
+        client,
+        [("files", ("test.jpg", b"synthetic image fixture"))],
+        timeout=0.1 if mode == "timeout" else 600,
+    )
+    state = wait(client, identifier)
+    assert state["status"] == "failed", state
+    assert state["error"]
+    assert not (Path(state["path"]) / "state.json").exists()
+    assert (
+        client.post(
+            f"/api/jobs/{identifier}/accept-materials", headers=HEADERS, json={"digest": "anything"}
+        ).status_code
+        == 409
+    )
+    assert client.get(f"/api/jobs/{identifier}/download").status_code == 409
+    assert (
+        client.post(f"/api/jobs/{identifier}/resume", headers=HEADERS, json={}).status_code == 409
+    )

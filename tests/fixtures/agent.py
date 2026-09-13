@@ -21,7 +21,33 @@ if mode == "fail-once" and stage == "execute":
         sys.exit(7)
 if mode == "execute-error" and stage == "execute":
     sys.exit(7)
-if stage == "prepare":
+if stage == "parse":
+    import hashlib
+
+    entries = []
+    for source in request["context"]["files"]:
+        path = Path(source["path"])
+        assert path.is_absolute() and path.is_file()
+        assert path.is_relative_to(Path.cwd())
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == source["sha256"]
+        if mode == "parse-mutate":
+            path.write_text("changed")
+        entries.append(
+            {
+                "source": source["source"],
+                "text": ""
+                if mode == "parse-unsupported"
+                else "Synthetic parsed text. Copy exactly.",
+                "status": "unsupported" if mode == "parse-unsupported" else "partial",
+                "warnings": ["Synthetic parser fixture; not real document interpretation."],
+            }
+        )
+    if mode == "parse-missing":
+        entries.pop()
+    if mode == "parse-duplicate":
+        entries.append(entries[0])
+    result = {"files": entries}
+elif stage == "prepare":
 
     def scenario(name, content):
         return {
