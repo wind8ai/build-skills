@@ -113,6 +113,7 @@ class Workflow:
                     schema=canonical(schema),
                     goal=self.config.goal,
                     task=context.get("task", ""),
+                    revision="previous_brief" in context,
                 )
             )
         except TemplateError as exc:
@@ -181,6 +182,34 @@ class Workflow:
         if not self.state.get("approval"):
             self.state["status"] = "awaiting_approval"
             self.save()
+
+    def revise_brief(self, accepted: str, answers: list[str], feedback: str) -> None:
+        """Apply user answers through the prepare model without approving its result."""
+        if self.state.get("approval") or self.state["round"]:
+            raise ValueError("草案已经确认，请新建任务后修改")
+        previous = Brief.model_validate(read_json(self.root / "brief.json"))
+        if accepted != digest(previous.model_dump()):
+            raise ValueError("草案已更新，请刷新后回答当前问题")
+        if len(answers) != len(previous.questions) or any(not a.strip() for a in answers):
+            raise ValueError("请逐条填写问题的回答，再提交更新草案")
+        if not answers and not feedback.strip():
+            raise ValueError("请填写希望调整的内容")
+        context = {
+            "materials": read_json(self.root / "materials.json"),
+            "feedback": self.feedback_items(),
+            "previous_brief": previous.model_dump(),
+            "answers": [
+                {"question": q, "answer": a.strip()}
+                for q, a in zip(previous.questions, answers, strict=True)
+            ],
+            "requested_changes": feedback.strip(),
+        }
+        revised = Brief.model_validate(self.call("prepare", context, Brief.model_json_schema()))
+        # Archive the version actually reviewed, even if it was edited outside the Web.
+        self.store("brief", previous.model_dump())
+        self.store("brief", revised.model_dump())
+        self.state["status"] = "awaiting_approval"
+        self.save()
 
     def approve(self, accepted: str | None) -> None:
         # The user can edit brief.json before accepting its new digest.

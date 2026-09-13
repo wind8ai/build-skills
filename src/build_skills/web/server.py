@@ -14,6 +14,7 @@ import tomli_w
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import Field
 
 from build_skills.config import digest, load_config
 from build_skills.models import Brief, Document
@@ -40,8 +41,13 @@ class MaterialApproval(Document):
 
 
 class Approval(Document):
-    brief: Brief
     digest: str
+
+
+class ReviewAnswers(Document):
+    digest: str
+    answers: list[str] = Field(default_factory=list, max_length=100)
+    feedback: str = Field(default="", max_length=20000)
 
 
 def create_app(config_path: Path | None, data_root: Path) -> FastAPI:
@@ -269,27 +275,58 @@ def create_app(config_path: Path | None, data_root: Path) -> FastAPI:
         start(job, proceed)
         return {"id": identifier}
 
-    @app.post("/api/jobs/{identifier}/approve")
-    def approve(identifier: str, approval: Approval) -> Any:
-        job = directory(identifier)
-        if identifier in active:
-            raise HTTPException(409, "任务正在执行")
-        run = job / "runs" / identifier
-        if not (run / "state.json").exists():
+    def reviewable(job: Path, accepted: str) -> Brief:
+        run = job / "runs" / job.name
+        if job.name in active:
+            raise HTTPException(409, "任务正在执行，请等待当前操作完成")
+        if not (run / "brief.json").exists():
             raise HTTPException(409, "请先核对材料并生成草案")
         state = read_json(run / "state.json")
         if state["round"] or state.get("approval"):
-            raise ValueError("已经确认或开始构建，请新建任务")
-        if digest(read_json(run / "brief.json")) != approval.digest:
-            raise HTTPException(409, "审阅内容已变化，请刷新")
-        if approval.brief.questions:
-            raise ValueError("请解决 questions 中的问题后再确认")
+            raise HTTPException(409, "草案已经确认或开始构建，请新建任务")
+        brief = Brief.model_validate(read_json(run / "brief.json"))
+        if digest(brief.model_dump()) != accepted:
+            raise HTTPException(409, "草案已更新，请刷新后审阅当前版本")
+        return brief
+
+    @app.post("/api/jobs/{identifier}/review")
+    def answer_questions(identifier: str, request: ReviewAnswers) -> Any:
+        job = directory(identifier)
+        brief = reviewable(job, request.digest)
+        if len(request.answers) != len(brief.questions) or any(
+            not answer.strip() for answer in request.answers
+        ):
+            raise ValueError("请逐条填写问题的回答，再提交更新草案")
+        if not request.answers and not request.feedback.strip():
+            raise ValueError("请填写希望调整的内容")
+
+        def revise() -> None:
+            from build_skills.workflow import Workflow
+
+            workflow = Workflow(load_config(job / "config.toml"), identifier)
+            with locked(workflow.root):
+                workflow.load()
+                workflow.revise_brief(request.digest, request.answers, request.feedback)
+                write_json(job / "result.json", workflow.status())
+
+        start(job, revise)
+        return {"id": identifier}
+
+    @app.post("/api/jobs/{identifier}/approve")
+    def approve(identifier: str, approval: Approval) -> Any:
+        job = directory(identifier)
+        brief = reviewable(job, approval.digest)
+        if brief.questions:
+            raise ValueError("请先回答草案中的问题并更新草案，再确认开始构建")
 
         def proceed() -> None:
-            write_json(run / "brief.json", approval.brief.model_dump())
-            result = invoke(job, "approve", "--accept", digest(approval.brief.model_dump()))
-            if result.get("status") == "approved":
-                invoke(job, "loop")
+            from build_skills.workflow import Workflow
+
+            workflow = Workflow(load_config(job / "config.toml"), identifier)
+            with locked(workflow.root):
+                workflow.load()
+                workflow.approve(approval.digest)
+            invoke(job, "loop")
 
         start(job, proceed)
         return {"id": identifier}

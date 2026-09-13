@@ -9,3 +9,12 @@ Input materials and feedback:
 Write response.json in the current directory matching this schema.
 The final chat message can be a short completion summary:
 {{ schema }}
+
+{% if revision | default(false) %}
+This is a revision of the supplied previous_brief, not a new task. Incorporate the user's
+answers and requested_changes into the scope, criteria, sources and scenarios where relevant.
+Preserve unrelated agreed content. Remove a question only when its answer resolves the uncertainty.
+If an answer is insufficient or contradictory, ask a focused follow-up question instead of guessing.
+Do not merely clear questions: the revised requirements and scenarios must reflect the answers.
+The revision remains a draft for user review, not approval to execute.
+{% endif %}

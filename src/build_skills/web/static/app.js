@@ -88,11 +88,44 @@ $('accept-materials').onclick=async()=>{
   try {await api(`jobs/${job}/accept-materials`,{method:'POST',body:JSON.stringify({digest:current.parsing_digest})});await refresh();}
   catch(e){error(e);$('accept-materials').disabled=!$('materials-accepted').checked;}
 };
-$('accepted').onchange=()=>{$('approve').disabled=!$('accepted').checked;};
+function renderBrief(brief) {
+  $('questions').replaceChildren();$('questions-panel').hidden=!brief.questions.length;
+  $('questions-title').textContent=`需要你回答 ${brief.questions.length} 个问题`;
+  brief.questions.forEach((question,index)=>{const label=text('label',`${index+1}. ${question}`);const answer=document.createElement('textarea');answer.dataset.answer=String(index);answer.rows=3;answer.required=true;answer.maxLength=10000;answer.placeholder='填写你的决定、适用范围或具体规则';label.append(answer);$('questions').append(label);});
+  const content=$('brief-content');content.replaceChildren();
+  function panel(title){const p=document.createElement('div');p.className='panel';p.append(text('h2',title));content.append(p);return p;}
+  panel('构建范围').append(text('p',brief.scope));
+  const criteria=document.createElement('ol');brief.criteria.forEach(item=>criteria.append(text('li',item)));panel('评估标准').append(criteria);
+  for(const [key,title] of [['development','开发场景'],['holdout','保留场景 · 仅用于最终验证']]){
+    const p=panel(title);
+    for(const scenario of brief[key]){const d=document.createElement('details');d.append(text('summary',scenario.id),text('p',scenario.task));
+      for(const [name,body] of Object.entries(scenario.files)){d.append(text('h3',`输入文件：${name}`),text('pre',body));}
+      const checks=document.createElement('ul');for(const check of scenario.checks){checks.append(text('li',check.equals!==null&&check.equals!==undefined?`${check.path} 的内容应完全等于：${check.equals}`:check.contains!==null&&check.contains!==undefined?`${check.path} 应包含：${check.contains}`:`应生成文件：${check.path}`));}d.append(checks);p.append(d);
+    }
+  }
+  const sources=panel('材料来源与依据');for(const source of brief.sources){const d=document.createElement('details');d.append(text('summary',source.reference),text('p',source.finding),text('p',`依据：${source.evidence}`),text('p',`状态：${({provided:'用户提供',supported:'已有证据',uncertain:'仍有不确定性'})[source.status]||source.status}`));sources.append(d);}
+  $('review-feedback').value='';$('accepted').checked=false;
+}
+function reviewControls(){
+  const pending=!!current?.brief?.questions.length,busy=!!current?.busy;
+  $('accepted').disabled=pending||busy;$('approve').disabled=pending||busy||!$('accepted').checked;
+  $('approval-hint').textContent=pending?'请先回答上方问题并更新草案。':'确认后开始构建与测评。';
+  $('revise').disabled=busy;$('revise').textContent=pending?'提交回答并更新草案':'根据修改意见更新草案';
+}
+$('review-form').onsubmit=async e=>{
+  e.preventDefault();$('error').hidden=true;
+  const answers=[...document.querySelectorAll('[data-answer]')].map(el=>el.value.trim());
+  const feedback=$('review-feedback').value.trim();
+  if(!answers.length&&!feedback){$('review-feedback').focus();error(Error('请填写希望调整的内容'));return;}
+  $('revise').disabled=true;
+  try{await api(`jobs/${job}/review`,{method:'POST',body:JSON.stringify({digest:current.brief_digest,answers,feedback})});await refresh();}
+  catch(e){error(e);reviewControls();}
+};
+$('accepted').onchange=reviewControls;
 $('approve').onclick=async()=>{
   $('approve').disabled=true;$('error').hidden=true;
-  try{await api(`jobs/${job}/approve`,{method:'POST',body:JSON.stringify({brief:JSON.parse($('brief').value),digest:current.brief_digest})});show(3);await refresh();}
-  catch(e){error(e);$('approve').disabled=!$('accepted').checked;}
+  try{await api(`jobs/${job}/approve`,{method:'POST',body:JSON.stringify({digest:current.brief_digest})});show(3);await refresh();}
+  catch(e){error(e);reviewControls();}
 };
 $('resume').onclick=async()=>{try{await api(`jobs/${job}/resume`,{method:'POST',body:'{}'});await refresh();}catch(e){error(e);}};
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('delivery-path').value);$('copy').textContent='已复制';}catch(e){$('delivery-path').select();error(Error('请复制已选中的本地地址'));}};
@@ -100,7 +133,7 @@ async function listJobs(){const list=await api('jobs');$('history').replaceChild
 $('history').onchange=async()=>{if(!$('history').value)return;job=$('history').value;current=null;$('error').hidden=true;history.replaceState(null,'',`?job=${job}`);await refresh();show(!current.approval?2:3);};
 async function refresh(){
   if(!job)return;const requested=job;const state=await api(`jobs/${job}`);if(requested!==job)return;
-  if(state.brief && (!current || current.brief_digest!==state.brief_digest)){$('brief').value=JSON.stringify(state.brief,null,2);$('accepted').checked=false;$('approve').disabled=true;}
+  if(state.brief && (!current || current.brief_digest!==state.brief_digest)){renderBrief(state.brief);}
   if(state.parsing && (!current || current.parsing_digest!==state.parsing_digest)){
     $('parsed-files').replaceChildren();
     for(const file of state.parsing.files){
@@ -112,8 +145,8 @@ async function refresh(){
     $('parsing-usage').textContent=`解析调用 ${state.parsing.calls} 次 · 耗时 ${state.parsing.elapsed_seconds.toFixed(1)} 秒 · 后续 Loop 复用此结果`;
   }
   $('material-review').hidden=!state.parsing||state.materials_approved||state.busy;
-  current=state;$('review').hidden=!state.brief||state.busy||!!state.approval;
-  $('review-status').textContent=state.busy?'正在调用模型，请稍候…':state.error||(state.brief?'草案已就绪。核对内容后确认，或直接编辑。':'材料已就绪。请核对解析文本与警告。');
+  current=state;reviewControls();$('review').hidden=!state.brief||state.busy||!!state.approval;
+  $('review-status').textContent=state.busy?'正在调用模型，请稍候…':state.error||(state.brief?(state.brief.questions.length?'请回答下方问题，模型将据此更新草案。':'草案已就绪。可审阅确认，也可填写修改意见让模型调整。'):'材料已就绪。请核对解析文本与警告。');
   $('status').textContent=state.busy?'执行中':labels[state.status]||state.status||'准备中';$('round').textContent=state.round||0;$('calls').textContent=state.calls||0;
   $('result-title').textContent=state.status==='delivered'?'Skill 已完成验证':'构建与测评';$('result-status').textContent=state.error|| (state.busy?'任务正在本机运行，可以离开此页面后重新打开。':'任务状态与测评结果已保存在本机。');
   $('reports').replaceChildren();
