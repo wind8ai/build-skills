@@ -15,11 +15,20 @@ else:
     assert "--print" in args and "--no-session-persistence" in args
     assert Path(args[args.index("--cwd") + 1]) == Path.cwd()
     prompt = args[-1]
+assert len(prompt.encode()) <= (900_000 if "exec" in args else 64_000)
+if prompt.startswith("Read the complete framework task from this local UTF-8 file:\n"):
+    task_path = Path(json.loads(prompt.splitlines()[1]))
+    assert task_path.is_absolute()
+    prompt = task_path.read_text(encoding="utf-8")
 marker = "The final chat message can be a short completion summary:\n"
 schema = json.loads(prompt.rsplit(marker, 1)[1]) if marker in prompt else None
 stage = {"Brief": "prepare", "BatchJudgment": "evaluate"}.get(
     schema["title"] if schema else "",
-    "build" if "skill/SKILL.md" in prompt and "Create" in prompt else "execute",
+    "improve"
+    if prompt.startswith("Improve")
+    else "build"
+    if "skill/SKILL.md" in prompt and "Create" in prompt
+    else "execute",
 )
 result = subprocess.run(
     [sys.executable, str(Path(__file__).with_name("agent.py"))],
