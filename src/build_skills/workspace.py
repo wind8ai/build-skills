@@ -161,6 +161,15 @@ def read_skill_directory(root: Path) -> Skill:
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise ValueError("Skill source contains a symlink")
+        relative = path.relative_to(root)
+        if "__pycache__" in relative.parts or path.suffix in {".pyc", ".pyo"}:
+            continue
         if path.is_file():
-            package[str(path.relative_to(root))] = path.read_text()
+            try:
+                package[str(relative)] = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise ValueError(
+                    f"Skill 文件 {relative} 不是 UTF-8 文本；请转换编码，"
+                    "或移除不受支持的二进制交付文件"
+                ) from exc
     return validate_skill({"files": package})

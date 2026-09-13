@@ -155,7 +155,7 @@ async function refresh(){
   $('delivery').hidden=state.status!=='delivered';$('delivery-path').value=state.delivery||'';$('download').href=`/api/jobs/${job}/download`;
   $('report-download').hidden=!Object.keys(state.reports||{}).length;$('report-download').href=`/api/jobs/${job}/report`;
   $('resume').hidden=state.busy||state.status==='delivered'||!state.approval;
-  $('details').textContent=JSON.stringify({run:state.run,path:state.path,status:state.status,error:state.error,usage:state.usage,parsing_attempt:state.parsing_attempt,models:state.settings?{builder:state.settings.builder,executors:state.settings.executors,repetitions:state.settings.repetitions}:null},null,2);
+  $('details').textContent=JSON.stringify({run:state.run,path:state.path,status:state.status,error:state.error,previous_error:state.previous_error,usage:state.usage,parsing_attempt:state.parsing_attempt,models:state.settings?{builder:state.settings.builder,executors:state.settings.executors,repetitions:state.settings.repetitions}:null},null,2);
 }
 (async()=>{try{options=await api('options');$('connection').textContent='本地连接已就绪';renderOptions();job=new URLSearchParams(location.search).get('job');await listJobs();if(job){await refresh();show(!current.approval?2:3);}else show(0);}catch(e){error(e);$('connection').textContent='连接失败';}})();
 setInterval(()=>refresh().catch(error),2000);

@@ -239,8 +239,14 @@ def create_app(config_path: Path | None, data_root: Path) -> FastAPI:
         if (job / "parsing/call/attempt.json").exists():
             result["parsing_attempt"] = read_json(job / "parsing/call/attempt.json")
         result["materials_approved"] = (job / "parsing/approval.json").exists()
-        if (run / "state.json").exists():
-            result.update(read_json(run / "state.json"))
+        state_path = run / "state.json"
+        if state_path.exists():
+            result.update(read_json(state_path))
+            if (
+                result.get("error")
+                and state_path.stat().st_mtime_ns > (job / "result.json").stat().st_mtime_ns
+            ):
+                result["previous_error"] = result.pop("error")
         result.update(id=identifier, busy=was_active or identifier in active, path=str(run))
         result["settings"] = read_json(job / "settings.json")
         if (run / "brief.json").exists():

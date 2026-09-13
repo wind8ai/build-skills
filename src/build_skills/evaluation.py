@@ -26,13 +26,26 @@ def observe(root: Path, scenario: Scenario) -> dict[str, Any]:
     checks = []
     for check in scenario.checks:
         target = safe_path(root, check.path)
-        ok = target.is_file() and target.stat().st_size <= 1_000_000
-        content = target.read_text() if ok else None
+        ok = target.is_file()
+        content = None
+        reason = None
+        if ok and (check.equals is not None or check.contains is not None):
+            if target.stat().st_size > 1_000_000:
+                ok = False
+                reason = "文件超过 1 MB 文本检查上限"
+            try:
+                content = target.read_text(encoding="utf-8") if ok else None
+            except UnicodeDecodeError:
+                ok = False
+                reason = "文件不是 UTF-8 文本，无法进行文本内容检查"
         if check.equals is not None:
             ok = ok and content == check.equals
         if check.contains is not None:
             ok = ok and content is not None and check.contains in content
-        checks.append({"path": check.path, "passed": bool(ok)})
+        result = {"path": check.path, "passed": bool(ok)}
+        if reason:
+            result["reason"] = reason
+        checks.append(result)
     outputs = {}
     size = 0
     for path in sorted(root.rglob("*")):
