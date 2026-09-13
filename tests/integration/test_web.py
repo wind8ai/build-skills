@@ -222,3 +222,30 @@ def test_failed_parsing_never_starts_workflow(tmp_path: Path, mode: str) -> None
     assert (
         client.post(f"/api/jobs/{identifier}/resume", headers=HEADERS, json={}).status_code == 409
     )
+
+
+def test_progress_does_not_keep_showing_an_old_error(client: TestClient, tmp_path: Path) -> None:
+    import os
+
+    from build_skills.workspace import read_json, write_json
+
+    identifier = create_job(client, [("files", ("notes.txt", b"Copy exactly"))])
+    state = wait(client, identifier)
+    client.post(
+        f"/api/jobs/{identifier}/accept-materials",
+        headers=HEADERS,
+        json={"digest": state["parsing_digest"]},
+    )
+    state = wait(client, identifier)
+    job = tmp_path / "jobs" / identifier
+    result_path = job / "result.json"
+    state_path = Path(state["path"]) / "state.json"
+    write_json(result_path, read_json(result_path) | {"error": "old decode failure"})
+    old = result_path.stat().st_mtime_ns
+    os.utime(state_path, ns=(old - 1000, old - 1000))
+    assert client.get(f"/api/jobs/{identifier}").json()["error"] == "old decode failure"
+    os.utime(state_path, ns=(old + 1000, old + 1000))
+    current = client.get(f"/api/jobs/{identifier}").json()
+    assert "error" not in current
+    assert current["previous_error"] == "old decode failure"
+    assert read_json(result_path)["error"] == "old decode failure"

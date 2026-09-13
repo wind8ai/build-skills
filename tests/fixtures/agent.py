@@ -109,8 +109,15 @@ elif stage == "execute":
         if "broken" in Path(".skill/SKILL.md").read_text()
         else Path("input.txt").read_text()
     )
+    if mode in {"large-evidence", "large-single-evidence"}:
+        Path("evidence.txt").write_text("x" * (480_000 if mode == "large-evidence" else 950_000))
     result = {"text": "Copied input.txt to output.txt."}
 else:
+    for item in request["context"]["executions"]:
+        if "evidence_path" in item:
+            evidence = json.loads(Path(item["evidence_path"]).read_text())
+            assert evidence["label"] == item["label"]
+            assert len(evidence["observation"]["files"]["evidence.txt"]) == 950_000
     result = {
         "results": [
             {
@@ -135,6 +142,9 @@ if stage == "build" and mode == "casealias":
     result["files"]["skill.md"] = "not a skill"
 if stage == "build" and mode == "garbage":
     result["files"]["scratch.log"] = "unused"
+if stage in {"build", "improve"} and mode == "bytecode":
+    result["files"]["SKILL.md"] += "\n[Helper](scripts/helper.py)\n"
+    result["files"]["scripts/helper.py"] = "print('copy helper')\n"
 if stage in {"build", "improve"}:
     for name, content in result["files"].items():
         if name.startswith("./") or name == "skill.md":
@@ -143,6 +153,10 @@ if stage in {"build", "improve"}:
         target = Path("skill") / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
+    if mode == "bytecode":
+        import py_compile
+
+        py_compile.compile("skill/scripts/helper.py", doraise=True)
 elif stage != "execute" and mode != "missing-response":
     Path("response.json").write_text(json.dumps(result))
 if stage == "build" and mode == "partial-build":
