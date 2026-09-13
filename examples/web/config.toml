@@ -1,0 +1,6 @@
+# Public synthetic demo. The command providers are deterministic fixtures, not LLMs.
+template = "../local-files/template.toml"
+name = "copy-text"
+goal = "Create a skill that copies a UTF-8 text file without changing its contents."
+materials = ["materials/copy-text.md"]
+workspace = "../../.build-skills/web-example"

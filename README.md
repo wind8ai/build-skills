@@ -29,6 +29,17 @@ uv run build-skills loop --config examples/local-files/config.toml --json
 
 Codex 和 Qoder 的实际完成度需用用户配置验证，框架测试不代替 Skill 质量验收。
 
+## 本地 Web 工作台
+
+```bash
+uv sync --locked --extra web
+uv run build-skills web --config examples/web/config.toml
+```
+
+打开 http://127.0.0.1:8765 ，上传文件、核对提取文字、配置模型和循环参数，审阅草案后开始构建。验证通过后可获取本地交付地址或下载 Skill ZIP；测评结论也可单独下载。支持文本、PDF、Word 和图片文字提取，图片需安装本机 OCR。
+
+[Web example 与文件支持说明](examples/web/README.md) 包含完整操作流程、真实模型接入和提交边界。示例使用进程替身，所有本地输入与运行产物均保存到被 Git 忽略的 `.build-skills/`。
+
 ## 继续运行与停止条件
 
 `loop` 会根据已保存的状态继续执行。首次运行在准备完成后停止，等待你通过 `approve --accept DIGEST` 确认审阅的版本。
