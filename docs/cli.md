@@ -104,3 +104,5 @@ Skill 的附属资源需从 SKILL.md 可达；Markdown 链接和明确的相对�
 需要复验现有 Skill 时，在 prepare/approve 后运行 `build --from-skill PATH`，再运行 loop。PATH 指向只包含 SKILL.md 和配套资源的独立包目录。导入会校验并复制内容、记录来源和摘要，不调用构建模型，也不跳过后续执行、评估或保留验证。它与 --recover-call 互斥，不能覆盖已接受的初始候选。
 
 Codex 与 Qoder 的所有阶段共享大输入保护：渲染后的请求过大时，完整提示词保存在调用证据的 `prompt.txt`，实际发送的短指令保存在 `transport-prompt.txt`，Agent 按绝对路径读取完整任务。Codex 的内联阈值为 900 KB；Qoder 因提示词通过命令行参数传递，阈值为 64 KB，以避开操作系统参数长度限制。不会截断原始材料或证据；调用记录包含交接方式和实际传输大小。读取能力仍依赖配置的 Agent，框架会拒绝采用修改过任务输入文件的产物。
+
+Qoder 的 `restricted` 使用非交互 `auto` 风险审查模式（保留拒绝规则和安全判断）；`full` 才映射为 `bypass_permissions`。工作目录仍需满足 Qoder 的信任规则，框架不修改全局信任或权限配置。Qoder 输出采用 JSON，`permission_denials` 或错误结果会判为执行未完成，停止自动优化，不能把环境授权失败当成 Skill 质量问题。参见 [Qoder 权限文档](https://docs.qoder.com/cli/permissions) 与 [脚本运行说明](https://docs.qoder.com/cli/run-in-scripts)。
