@@ -48,4 +48,14 @@ if "exec" in args:
     Path(args[args.index("--output-last-message") + 1]).write_text(result.stdout)
     print('{"type":"fixture.event"}')
 else:
-    print(result.stdout, end="")
+    print(
+        json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "result": result.stdout,
+                "permission_denials": [],
+            }
+        )
+    )

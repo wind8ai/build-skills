@@ -109,6 +109,8 @@ elif stage == "execute":
         if "broken" in Path(".skill/SKILL.md").read_text()
         else Path("input.txt").read_text()
     )
+    if mode == "mutate-source":
+        Path("input.txt").write_text("changed after copying")
     if mode in {"large-evidence", "large-single-evidence"}:
         Path("evidence.txt").write_text("x" * (480_000 if mode == "large-evidence" else 950_000))
     result = {"text": "Copied input.txt to output.txt."}
@@ -123,8 +125,13 @@ else:
             {
                 "label": item["label"],
                 "score": 1.0,
-                "passed": True,
-                "reason": "Exact copy",
+                "passed": all(
+                    item["observation"]["files"].get(name) == value
+                    for name, value in item["inputs"].items()
+                )
+                if mode == "mutate-source"
+                else True,
+                "reason": "Original input comparison" if mode == "mutate-source" else "Exact copy",
                 "evidence": ["output.txt"],
             }
             for item in request["context"]["executions"]
