@@ -123,8 +123,10 @@ def invoke(
         ):
             raise WorkflowError("Agent 修改了任务输入文件，不能采用产物")
         result = _collect_result(provider, stage, schema, cwd, evidence, output)
-    except (OSError, ValueError, WorkflowError):
-        receipt["status"] = "invalid_output"
+    except (OSError, ValueError, WorkflowError) as exc:
+        receipt["status"] = (
+            "permission_denied" if isinstance(exc, qoder.PermissionDenied) else "invalid_output"
+        )
         write_json(evidence / "attempt.json", receipt)
         raise
     receipt["status"] = "completed"
@@ -140,6 +142,7 @@ def _collect_result(
     evidence: Path,
     output: Path,
 ) -> Any:
+    qoder_text = qoder.result_text(evidence / "stdout.txt") if provider.kind == "qoder" else None
     if stage in {"build", "improve"}:
         skill_root = cwd / "skill"
         if skill_root.is_symlink() or not skill_root.is_dir():
@@ -157,6 +160,8 @@ def _collect_result(
             return model.model_validate(read_json(response)).model_dump()
         except (ValueError, OSError) as exc:
             raise WorkflowError("Invalid response.json; raw output retained") from exc
+    if qoder_text is not None:
+        return {"text": qoder_text}
     result_path = output if provider.kind == "codex" else evidence / "stdout.txt"
     if not result_path.is_file() or result_path.stat().st_size > 2_000_000:
         raise WorkflowError("Missing or oversized agent response")

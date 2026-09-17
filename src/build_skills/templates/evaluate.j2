@@ -4,7 +4,12 @@ An entry with evidence_path stores its complete execution evidence in that local
 Read that file using local tools before judging the label; inspect its task, output and observation.
 For large contents use local scripts to check exact properties rather than copying entire files
 into chat. Do not alter evidence files. If evidence cannot be read, mark the case as not passed.
-Cite concrete evidence. Missing evidence or incomplete work cannot pass.
+The inputs field is the original scenario file snapshot before execution. Compare it to
+observation.files when checking preservation of source files. All relative file paths in a case
+refer to that execution's captured workspace, NOT your current working directory. Do not mark
+files missing by probing your own unrelated working directory; use the supplied snapshots and
+recorded checks (or the explicit evidence_path JSON). Cite concrete evidence.
+Missing evidence or incomplete work cannot pass.
 Return exactly one result per input label. Keep labels unchanged; do not infer model identities.
 {{ data }}
 Write response.json in the current directory matching this schema.

@@ -402,7 +402,9 @@ class Workflow:
         if failures:
             code = 4 if all(r.get("error_code") == 4 for r in failures) else 5
             raise WorkflowError(
-                f"{len(failures)} execution(s) incomplete; all model results retained", code
+                f"{len(failures)} execution(s) incomplete; all model results retained. "
+                f"{failures[0].get('error', '')}",
+                code,
             )
 
     def evaluation_contexts(
@@ -472,9 +474,11 @@ class Workflow:
         candidates = {f"case-{i}": r for i, r in enumerate(records) if r["status"] == "completed"}
         scored = {}
         if candidates:
+            scenario_inputs = {scenario.id: scenario.files for scenario in scenarios}
             executions = [
                 {
                     "label": label,
+                    "inputs": scenario_inputs[r["scenario"]],
                     "task": r["task"],
                     "output": r["output"],
                     "observation": r["observation"],
