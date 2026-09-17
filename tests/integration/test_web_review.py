@@ -58,6 +58,7 @@ def test_answer_questions_then_review_revised_brief(tmp_path: Path) -> None:
         json={"digest": state["parsing_digest"]},
     )
     state = wait(client, job)
+    assert "error" not in state, "Expected approval is not an error"
     # Existing runs with questions must also be supported.
     run = Path(state["path"])
     brief = read_json(run / "brief.json")
@@ -124,6 +125,9 @@ def test_answer_questions_then_review_revised_brief(tmp_path: Path) -> None:
     assert response.status_code == 200
     state = wait(client, job)
     assert state["brief"]["scope"] == "Copy UTF-8 only."
+    assert len(state["review_history"]) == 4
+    assert state["review_history"][2]["answers"][0]["answer"] == "Preserve all whitespace."
+    assert state["review_history"][3]["requested_changes"] == "Copy UTF-8 only."
     response = client.post(
         f"/api/jobs/{job}/approve", headers=HEADERS, json={"digest": state["brief_digest"]}
     )
@@ -138,3 +142,65 @@ def test_answer_questions_then_review_revised_brief(tmp_path: Path) -> None:
         ).status_code
         == 409
     )
+
+
+def test_prepare_timeout_is_visible_and_retry_stays_in_review(tmp_path: Path) -> None:
+    import sys
+
+    import tomli_w
+
+    config = load_config(Path(__file__).resolve().parents[2] / "examples/web/config.toml")
+    original_command = config.providers[config.roles["build"]].command
+    marker = tmp_path / "attempted"
+    script = tmp_path / "slow-once.py"
+    script.write_text(
+        "import pathlib,sys,time,subprocess\n"
+        f"marker=pathlib.Path({str(marker)!r})\n"
+        "data=sys.stdin.read()\n"
+        "if not marker.exists():\n marker.touch()\n time.sleep(5)\n"
+        f"p=subprocess.run({original_command!r},input=data,text=True)\n"
+        "sys.exit(p.returncode)\n"
+    )
+    config.providers[config.roles["build"]].command = [sys.executable, str(script)]
+    path = tmp_path / "config.toml"
+    path.write_text(tomli_w.dumps(config.model_dump(exclude_none=True)))
+    client = TestClient(create_app(path, tmp_path / "data"))
+    options = client.get("/api/options").json()
+    material = client.post(
+        "/api/materials", headers=HEADERS, files={"files": ("notes.txt", b"Copy text")}
+    ).json()
+    settings = {
+        key: options[key]
+        for key in ("builder", "executors", "max_rounds", "repetitions", "minimum_score")
+    }
+    job = client.post(
+        "/api/jobs",
+        headers=HEADERS,
+        json=settings
+        | {
+            "material": material["id"],
+            "name": "timeout-test",
+            "goal": "Copy text",
+            "agent_timeout_seconds": 1,
+        },
+    ).json()["id"]
+    state = wait(client, job)
+    client.post(
+        f"/api/jobs/{job}/accept-materials",
+        headers=HEADERS,
+        json={"digest": state["parsing_digest"]},
+    )
+    for _ in range(100):
+        state = client.get(f"/api/jobs/{job}").json()
+        if state.get("current_call"):
+            break
+        time.sleep(0.01)
+    assert state["current_call"]["stage"] == "prepare"
+    assert state["current_call"]["timeout_seconds"] == 1
+    assert state["current_call"]["elapsed_seconds"] >= 0
+    state = wait(client, job)
+    assert not state["busy"] and "timed out" in state["error"]
+    client.post(f"/api/jobs/{job}/resume", headers=HEADERS, json={})
+    state = wait(client, job)
+    assert state["status"] == "awaiting_approval" and "error" not in state
+    assert not state.get("approval")

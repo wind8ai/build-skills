@@ -13,6 +13,7 @@ from build_skills.web.server import create_app
 def test_web_has_requested_model_defaults(tmp_path: Path) -> None:
     client = TestClient(create_app(None, tmp_path))
     options = client.get("/api/options").json()
+    assert options["agent_timeout_seconds"] == 600
     assert options["builder"]["model"] == "gpt-5.6-sol"
     assert options["builder"]["reasoning_effort"] == "high"
     assert [p["model"] for p in options["executors"]] == ["Qwen3.8-Flash"]
@@ -100,6 +101,8 @@ def test_saved_choices_drive_all_stages_and_duplicate_executions(tmp_path: Path)
     assert set(actual.roles.values()) == {"builder"}
     assert actual.execution.models == ["executor_1", "executor_2"]
     assert actual.execution.repetitions == 2
+    assert actual.limits.build.timeout_seconds == 600
+    assert actual.limits.improve.timeout_seconds == 600
     assert actual.providers["builder"].model == "build-v1"
     assert actual.providers["builder"].reasoning_effort == "high"
     attempts = [json.loads(p.read_text()) for p in Path(state["path"]).glob("calls/*/attempt.json")]
