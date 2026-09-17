@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import uuid
 import zipfile
 from pathlib import Path
@@ -111,6 +112,8 @@ def create_app(config_path: Path | None, data_root: Path) -> FastAPI:
             value: dict[str, Any] = json.loads(result.stdout)
         except ValueError:
             value = {"status": "failed", "error": result.stderr or "CLI returned no result"}
+        if result.returncode == 3 and value.get("status") == "awaiting_approval":
+            value.pop("error", None)
         write_json(job / "result.json", value)
         return value
 
@@ -252,6 +255,22 @@ def create_app(config_path: Path | None, data_root: Path) -> FastAPI:
         if (run / "brief.json").exists():
             result["brief"] = read_json(run / "brief.json")
             result["brief_digest"] = digest(result["brief"])
+        if result.get("status") == "awaiting_approval" and result.get("error") == (
+            "Review and approve the brief first"
+        ):
+            result.pop("error", None)
+        result["review_history"] = (
+            read_json(run / "review-history.json") if (run / "review-history.json").exists() else []
+        )
+        pending = result.get("pending_call")
+        if pending:
+            attempt_path = run / "calls" / f"{pending['number']:04d}" / "attempt.json"
+            attempt = read_json(attempt_path) if attempt_path.exists() else {}
+            result["current_call"] = {
+                "stage": attempt.get("stage", pending["key"].split(":")[0]),
+                "elapsed_seconds": max(0, int(time.time() - pending["started"])),
+                "timeout_seconds": attempt.get("timeout_seconds"),
+            }
         result["reports"] = {p.stem: read_json(p) for p in run.glob("*-report-*.json")}
         return result
 

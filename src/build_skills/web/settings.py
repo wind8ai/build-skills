@@ -23,6 +23,7 @@ class ModelDefaults(Document):
     max_rounds: int = Field(ge=1, le=100)
     repetitions: int = Field(ge=1, le=20)
     minimum_score: float = Field(ge=0, le=1)
+    agent_timeout_seconds: float = Field(default=600, gt=0, le=7200, allow_inf_nan=False)
     parsing_timeout_seconds: float = Field(default=600, gt=0, le=7200, allow_inf_nan=False)
 
 
@@ -110,5 +111,7 @@ def task_config(base: Config, settings: Settings) -> Config:
         config.execution.models.append(key)
     config.execution.repetitions = settings.repetitions
     config.limits.max_rounds = settings.max_rounds
+    for stage in ("prepare", "build", "improve", "evaluate", "execute"):
+        getattr(config.limits, stage).timeout_seconds = settings.agent_timeout_seconds
     config.quality.minimum_score = settings.minimum_score
     return Config.model_validate(config.model_dump())
