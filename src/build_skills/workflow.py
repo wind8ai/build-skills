@@ -210,6 +210,18 @@ class Workflow:
             ],
             "requested_changes": feedback.strip(),
         }
+        history = (
+            self.artifact("review-history") if "review-history" in self.state["artifacts"] else []
+        )
+        history.append(
+            {
+                "brief_digest": accepted,
+                "answers": context["answers"],
+                "requested_changes": feedback.strip(),
+            }
+        )
+        self.store("review-history", history)
+        context["review_history"] = history
         revised = Brief.model_validate(self.call("prepare", context, Brief.model_json_schema()))
         # Archive the version actually reviewed, even if it was edited outside the Web.
         self.store("brief", previous.model_dump())
