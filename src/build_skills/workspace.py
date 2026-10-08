@@ -55,14 +55,14 @@ def read_json(path: Path) -> Any:
 
 
 @contextmanager
-def locked(path: Path) -> Iterator[None]:
+def locked(path: Path, *, wait: bool = False) -> Iterator[None]:
     path.mkdir(parents=True, exist_ok=True)
     lock = path / ".lock"
     if lock.is_symlink():
         raise ValueError("Symlink lock refused")
     with lock.open("a") as handle:
         try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(handle, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
         except BlockingIOError as exc:
             raise WorkflowError("Run is already active", 5) from exc
         try:

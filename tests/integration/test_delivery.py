@@ -34,3 +34,14 @@ def test_feedback_is_available_to_next_run(task_config, cli):
     assert cli(task_config, "feedback", "--run", state["run"], "--file", str(feedback))[0] == 0
     _, next_state = cli(task_config, "prepare")
     assert next_state["run"] != state["run"]
+
+
+def test_delivered_directory_cannot_gain_unverified_files(task_config, cli):
+    _, prepared = cli(task_config, "prepare")
+    run = prepared["run"]
+    cli(task_config, "approve", "--run", run, "--accept", prepared["brief_digest"])
+    code, result = cli(task_config, "loop", "--run", run)
+    assert code == 0 and result["status"] == "delivered"
+    (Path(result["delivery"]) / "unverified.txt").write_text("not verified")
+    code, result = cli(task_config, "deliver", "--run", run)
+    assert code != 0 and "unverified.txt" in result["error"]

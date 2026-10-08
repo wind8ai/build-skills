@@ -592,7 +592,7 @@ class Workflow:
         self.state["status"] = "verified"
         self.save()
 
-    def deliver(self) -> None:
+    def deliver(self) -> dict[str, Any]:
         import shutil
 
         from build_skills.evaluation import materialize
@@ -622,12 +622,34 @@ class Workflow:
             "provider_kinds": {k: v.kind for k, v in self.config.providers.items()},
             "limitation": "Results cover configured tasks only; command fixtures are not models.",
         }
+        if destination.is_symlink():
+            raise ValueError("Delivery cannot be a symlink")
         if destination.exists():
-            if read_json(destination / "report.json") != manifest:
-                raise ValueError("Delivery already exists with different contents")
-            for name, content in skill.files.items():
-                if safe_path(destination / "skill", name).read_text() != content:
-                    raise ValueError("Delivered Skill was modified")
+            expected = {"report.json": canonical(manifest).encode("utf-8")} | {
+                "skill/" + name: content.encode("utf-8") for name, content in skill.files.items()
+            }
+            required_dirs = {
+                str(parent)
+                for name in expected
+                for parent in Path(name).parents
+                if str(parent) != "."
+            }
+            actual = set()
+            for path in destination.rglob("*"):
+                name = path.relative_to(destination).as_posix()
+                if path.is_symlink():
+                    raise ValueError(f"Delivery contains a symlink: {name}")
+                if path.is_dir():
+                    if name not in required_dirs:
+                        raise ValueError(f"Unverified delivery directory: {name}")
+                elif path.is_file():
+                    actual.add(name)
+                    if name not in expected or path.read_bytes() != expected[name]:
+                        raise ValueError(f"Unverified or modified delivery file: {name}")
+                else:
+                    raise ValueError(f"Unsupported delivery entry: {name}")
+            if actual != set(expected):
+                raise ValueError("Delivery is missing validated files")
         else:
             temporary = self.root / ("delivery-" + uuid.uuid4().hex)
             try:
@@ -640,6 +662,7 @@ class Workflow:
         self.state["delivery"] = str(destination)
         self.state["status"] = "delivered"
         self.save()
+        return manifest
 
     def feedback(self, path: Path) -> None:
         value = {"source_run": self.run, "text": path.read_text()}
