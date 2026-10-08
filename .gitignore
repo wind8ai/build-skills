@@ -34,3 +34,9 @@ dist/
 /experiments/
 /plans/
 /docs/experiments/
+
+# Frontend/build-tool generated output
+node_modules/
+web-ui/test-results/
+web-ui/playwright-report/
+src/build_skills/web/static/

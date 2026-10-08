@@ -32,11 +32,14 @@ dev = [
     "httpx>=0.28.1",
 ]
 
+[tool.hatch.build]
+artifacts = ["src/build_skills/web/static/**"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/build_skills"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/tests", "/examples", "/docs/README.md", "/docs/cli.md", "/docs/intent.md", "/docs/design.md", "/docs/images", "/LICENSE", "/README.md", "/CONTRIBUTING.md", "/pyproject.toml", "/uv.lock"]
+include = ["/src", "/tests", "/examples", "/docs/README.md", "/docs/cli.md", "/docs/intent.md", "/docs/design.md", "/docs/images", "/LICENSE", "/README.md", "/CONTRIBUTING.md", "/pyproject.toml", "/uv.lock", "/web-ui", "/scripts", "/tools/workflow-compiler"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

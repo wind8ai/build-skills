@@ -17,7 +17,25 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install uv==0.9.22
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: tools/workflow-compiler/go.mod
+          cache-dependency-path: tools/workflow-compiler/go.sum
       - run: uv sync --locked --extra web
+      - run: npm --prefix web-ui ci
+      - run: node scripts/build-web.mjs
+      - run: node scripts/compile-workflow.mjs --check
+      - run: go test ./...
+        working-directory: tools/workflow-compiler
+      - run: npm --prefix web-ui run test
+      - run: npx playwright install --with-deps chromium
+        working-directory: web-ui
+      - run: npm --prefix web-ui run test:e2e
       - run: uv run --no-sync ruff check .
       - run: uv run --no-sync ruff format --check .
       - run: uv run --no-sync mypy src/build_skills
@@ -27,6 +45,7 @@ jobs:
         shell: bash
         run: |
           uv venv "$RUNNER_TEMP/wheel-env"
-          uv pip install --python "$RUNNER_TEMP/wheel-env/bin/python" dist/*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-env/bin/python" "dist/build_skills-0.1.0-py3-none-any.whl[web]"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/wheel-env/bin/build-skills" --help
+          "$RUNNER_TEMP/wheel-env/bin/python" -c 'from build_skills.web.workflow_schema import builtin_workflow, check_frontend_assets; builtin_workflow(); check_frontend_assets()'

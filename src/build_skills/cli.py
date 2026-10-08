@@ -139,8 +139,14 @@ def web(
 
         from build_skills.web.listener import bind_listener
         from build_skills.web.server import create_app
+        from build_skills.web.workflow_schema import check_frontend_assets
     except ImportError as exc:
         typer.echo("Install web dependencies: uv sync --extra web", err=True)
+        raise typer.Exit(2) from exc
+    try:
+        check_frontend_assets()
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
     ports = range(8321, 8325) if port == 8321 else [port]
     try:
