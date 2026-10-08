@@ -257,29 +257,15 @@ h1 {
 .canvas-shell {
   position: relative;
   flex: 1;
-  min-height: 380px;
+  min-height: 0;
   background: #f6f8fc;
   border: 1px solid #d7e0ec;
   border-radius: 15px;
   overflow: hidden;
   box-shadow: 0 6px 28px #1c365507;
 }
-.react-flow__edge-textbg {
-  fill: #f6f8fc;
-}
-.react-flow__controls {
-  box-shadow: 0 3px 10px #17304912;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.react-flow__minimap {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
 .workflow-card {
-  width: 350px;
+  width: 100%;
   border: 1px solid #d1ddeb;
   border-radius: 12px;
   background: #fff;
@@ -399,21 +385,6 @@ h1 {
 .node-body::-webkit-scrollbar-thumb {
   background: #ccd7e7;
   border-radius: 5px;
-}
-.react-flow__handle {
-  background: #aab9d0;
-  border: 2px solid white;
-  width: 10px;
-  height: 10px;
-}
-.react-flow__handle-right {
-  right: -5px;
-}
-.react-flow__handle-left {
-  left: -5px;
-}
-.success .react-flow__handle {
-  background: #367cff;
 }
 label {
   display: block;
@@ -842,25 +813,6 @@ footer {
     display: grid;
     gap: 12px;
   }
-  .mobile-node {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: white;
-    padding: 16px;
-  }
-  .mobile-node > button {
-    display: flex;
-    justify-content: space-between;
-    background: transparent;
-    color: #294568;
-    padding: 0;
-    width: 100%;
-    margin-bottom: 10px;
-  }
-  .mobile-node > button span {
-    font-size: 12px;
-    color: var(--muted);
-  }
   .top-actions button {
     padding: 8px 10px;
   }
@@ -908,4 +860,194 @@ footer {
 
 .node-body {
   max-height: min(400px, calc(100vh - 390px));
+}
+
+.pipeline-scroll {
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-top: 24px;
+  padding: 24px 28px;
+}
+.pipeline-intro {
+  max-width: 930px;
+  margin: 0 auto 22px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pipeline-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #2868cf;
+  background: #e9f0fc;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.pipeline-intro p {
+  margin: 0;
+  color: #75869b;
+  font-size: 13px;
+}
+.pipeline-track {
+  max-width: 930px;
+  margin: 0 auto;
+}
+.pipeline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+}
+.pipeline-main-step {
+  min-width: 0;
+}
+.pipeline-connector {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #9eafc5;
+  position: relative;
+}
+.pipeline-connector::before {
+  content: "";
+  position: absolute;
+  left: calc(50% - 1px);
+  top: 0;
+  width: 2px;
+  height: 13px;
+  background: #cad7e8;
+}
+.pipeline-connector.complete {
+  color: #3778df;
+}
+.pipeline-connector.complete::before {
+  background: #80a8ec;
+}
+.pipeline-branch {
+  min-width: 0;
+  padding-top: 12px;
+  position: relative;
+}
+.branch-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a77b40;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.branch-label::before {
+  content: "";
+  position: absolute;
+  left: -36px;
+  top: 23px;
+  width: 24px;
+  border-top: 2px dashed #d5b480;
+}
+.pipeline-branch .workflow-card {
+  border-color: #e4d4b9;
+  box-shadow: none;
+}
+.pipeline-branch .workflow-card.expanded {
+  border-color: #6393ee;
+  box-shadow: 0 7px 26px #1e5daf20;
+}
+.loop-back {
+  width: 100%;
+  background: #fff9ef;
+  border: 1px dashed #dcc8a8;
+  color: #967244;
+  margin-top: 12px;
+  justify-content: flex-start;
+  font-size: 12px;
+  padding: 10px 12px;
+}
+.loop-back span {
+  margin-left: auto;
+}
+.workflow-card {
+  scroll-margin-top: 24px;
+}
+.workflow-card:focus {
+  outline: none;
+}
+.workflow-card .node-header:focus-visible {
+  outline-offset: -3px;
+}
+.node-body {
+  max-height: min(420px, calc(100vh - 440px));
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+  .pipeline-scroll {
+    padding: 20px 16px;
+  }
+  .pipeline-row {
+    gap: 22px;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+  .branch-label::before {
+    left: -19px;
+    width: 14px;
+  }
+  .pipeline-intro {
+    align-items: flex-start;
+  }
+  .pipeline-intro p {
+    font-size: 12px;
+  }
+}
+
+.pipeline-main-step {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+}
+.pipeline-connector {
+  flex: 1;
+  min-height: 48px;
+}
+.pipeline-connector::before {
+  height: 100%;
+}
+.pipeline-connector svg {
+  position: relative;
+  background: #f6f8fc;
+}
+@media (max-width: 900px) {
+  .mobile-flow {
+    display: block;
+  }
+  .pipeline-scroll {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+  }
+  .pipeline-row {
+    display: block;
+  }
+  .pipeline-intro {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .pipeline-intro p {
+    font-size: 12px;
+  }
+  .pipeline-branch {
+    margin: 0 0 24px 20px;
+    padding: 12px 0 0 15px;
+    border-left: 2px dashed #d5b480;
+  }
+  .branch-label::before {
+    left: 0;
+    top: 22px;
+    width: 12px;
+  }
+  .node-body {
+    max-height: none;
+  }
 }

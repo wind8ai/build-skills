@@ -23,7 +23,7 @@ import {
   CheckCheck,
   ExternalLink,
 } from "lucide-react";
-import WorkflowCanvas, { stateLabels } from "./WorkflowCanvas";
+import WorkflowPipeline from "./WorkflowPipeline";
 import { emptySettings, settingsFrom } from "./state";
 import {
   api,
@@ -374,40 +374,35 @@ export default function App() {
       applied.current = ticket;
       setConnected(true);
       setState(s);
-      if (s.error && !s.busy && followRef.current) {
-        const key = `${id}:${s.operation?.id}:${s.calls}`;
-        if (handledFailure.current !== key) {
-          handledFailure.current = key;
-          const failed = Object.entries(s.nodes || {}).find(
-            ([, v]) =>
-              ["failed", "cancelled"].includes((v as Data).status) &&
-              (v as Data).actions?.length,
-          );
-          if (failed) setSelected(failed[0]);
-        }
-      }
-
-      if (followRef.current && s.busy) {
-        const active = Object.entries(s.nodes || {}).find(
-          ([, v]) => (v as Data).status === "running",
-        );
-        if (active) setSelected(active[0]);
-      }
       if (s.workflow) setDescription(s.workflow);
-      if (s.approval && !lastApproval.current) {
-        setSelected(
-          s.delivery
-            ? "deliver"
-            : s.current_call?.stage === "improve"
-              ? "improve"
-              : "build",
-        );
-        lastApproval.current = true;
-      } else if (!s.approval && s.brief)
-        setSelected((prev) =>
-          ["source", "configure", "parse"].includes(prev) ? "review" : prev,
-        );
-      if (s.delivery) setSelected("deliver");
+      const firstApproval = !!s.approval && !lastApproval.current;
+      lastApproval.current = !!s.approval;
+      // One authoritative focus decision per snapshot. Terminal failures take
+      // priority over initial approval, and manual inspection disables all of it.
+      if (followRef.current) {
+        if (s.delivery) setSelected("deliver");
+        else if (s.error && !s.busy) {
+          const key = `${id}:${s.operation?.id}:${s.calls}`;
+          if (handledFailure.current !== key) {
+            handledFailure.current = key;
+            const failed = Object.entries(s.nodes || {}).find(
+              ([, v]) =>
+                ["failed", "cancelled"].includes((v as Data).status) &&
+                (v as Data).actions?.length,
+            );
+            if (failed) setSelected(failed[0]);
+          }
+        } else if (s.busy) {
+          const active = Object.entries(s.nodes || {}).find(
+            ([, v]) => (v as Data).status === "running",
+          );
+          if (active) setSelected(active[0]);
+        } else if (firstApproval) setSelected("build");
+        else if (!s.approval && s.brief)
+          setSelected((prev) =>
+            ["source", "configure", "parse"].includes(prev) ? "review" : prev,
+          );
+      }
     } catch (e) {
       setConnected(false);
       setError(String(e instanceof Error ? e.message : e));
@@ -440,10 +435,8 @@ export default function App() {
   function selectNode(id: string) {
     setSelected(id);
     setFocusKey((v) => v + 1);
-    if (state?.busy) {
-      setFollow(false);
-      followRef.current = false;
-    }
+    setFollow(false);
+    followRef.current = false;
   }
   function chooseJob(id: string) {
     if (!id && builtin.current) setDescription(builtin.current);
@@ -569,9 +562,9 @@ export default function App() {
         setFollow(true);
         followRef.current = true;
       }
-      await refresh(job);
       if (action === "approve") setSelected("build");
       if (action === "accept-materials") setSelected("review");
+      await refresh(job);
     });
   }
   const items: Data[] = remote?.files || local;
@@ -1298,6 +1291,7 @@ export default function App() {
               <button
                 key={n.id}
                 className={selected === n.id ? "selected" : ""}
+                aria-current={selected === n.id ? "step" : undefined}
                 onClick={() => selectNode(n.id)}
               >
                 <span
@@ -1332,7 +1326,11 @@ export default function App() {
                     ? jobs.find((j) => j.id === job)?.name || "构建进行中"
                     : "构建一个可验证的 Skill"}
               </h1>
-              <p>在节点中配置与处理，沿流程查看进度和结果。</p>
+              <p>
+                {mobile
+                  ? "沿 Pipeline 配置与处理，点击步骤展开操作。"
+                  : "沿 Pipeline 配置与处理，点击左侧步骤展开并定位。"}
+              </p>
             </div>
             {job && (
               <div className="heading-actions">
@@ -1343,12 +1341,22 @@ export default function App() {
                     setFollow(next);
                     followRef.current = next;
                     if (next) {
-                      const active = Object.entries(state?.nodes || {}).find(
-                        ([, v]) => (v as Data).status === "running",
-                      );
-                      if (active) selectNode(active[0]);
-                      followRef.current = next;
-                      setFollow(next);
+                      const nodes = Object.entries(state?.nodes || {});
+                      const target = state?.delivery
+                        ? "deliver"
+                        : nodes.find(
+                            ([, v]) => (v as Data).status === "running",
+                          )?.[0] ||
+                          nodes.find(
+                            ([, v]) =>
+                              ["failed", "cancelled", "waiting"].includes(
+                                (v as Data).status,
+                              ) && (v as Data).actions?.length,
+                          )?.[0];
+                      if (target) {
+                        setSelected(target);
+                        setFocusKey((v) => v + 1);
+                      }
                     }
                   }}
                 >
@@ -1378,40 +1386,23 @@ export default function App() {
               {state.error}
             </div>
           )}
-          {!mobile && (
-            <div className="canvas-shell">
-              {description ? (
-                <WorkflowCanvas
-                  description={description}
-                  states={states}
-                  selected={selected}
-                  onSelect={selectNode}
-                  focusKey={focusKey}
-                  body={body}
-                />
-              ) : (
-                <div className="loading">
-                  <LoaderCircle className="spin" />
-                  连接服务以加载内置流程
-                </div>
-              )}
-            </div>
-          )}
-          {mobile && (
-            <div className="mobile-flow">
-              {description?.nodes.map((n) => (
-                <section key={n.id} className="mobile-node">
-                  <button onClick={() => selectNode(n.id)}>
-                    <b>{n.title}</b>
-                    <span>
-                      {stateLabels[states[n.id]?.status || "blocked"]}
-                    </span>
-                  </button>
-                  {selected === n.id && body(n)}
-                </section>
-              ))}
-            </div>
-          )}
+          <div className={mobile ? "mobile-flow" : "canvas-shell"}>
+            {description ? (
+              <WorkflowPipeline
+                description={description}
+                states={states}
+                selected={selected}
+                onSelect={selectNode}
+                focusKey={focusKey}
+                body={body}
+              />
+            ) : (
+              <div className="loading">
+                <LoaderCircle className="spin" />
+                连接服务以加载内置流程
+              </div>
+            )}
+          </div>
           <footer>
             <span>源文件选取 → 人工确认 → 独立验证 → 准确版本导出</span>
             <span>

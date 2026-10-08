@@ -7,7 +7,7 @@ test("questions, draft reload, confirmation, immutable delivery and download", a
   page,
 }) => {
   await page.goto("/");
-  await expect(page.locator(".react-flow__minimap-node")).toHaveCount(11);
+  await expect(page.locator(".workflow-card")).toHaveCount(11);
   await page
     .locator(".upload-box input")
     .setInputFiles(path.join(repo, "examples/web/materials/copy-text.md"));
