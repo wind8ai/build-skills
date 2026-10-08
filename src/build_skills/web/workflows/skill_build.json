@@ -1,0 +1,240 @@
+{
+  "edges": [
+    {
+      "id": "source-configure",
+      "label": "",
+      "source": "source",
+      "target": "configure"
+    },
+    {
+      "id": "configure-parse",
+      "label": "",
+      "source": "configure",
+      "target": "parse"
+    },
+    {
+      "id": "parse-review",
+      "label": "",
+      "source": "parse",
+      "target": "review"
+    },
+    {
+      "id": "review-approve",
+      "label": "",
+      "source": "review",
+      "target": "approve"
+    },
+    {
+      "id": "approve-build",
+      "label": "",
+      "source": "approve",
+      "target": "build"
+    },
+    {
+      "id": "build-execute",
+      "label": "",
+      "source": "build",
+      "target": "execute"
+    },
+    {
+      "id": "execute-evaluate",
+      "label": "",
+      "source": "execute",
+      "target": "evaluate"
+    },
+    {
+      "id": "evaluate-verify",
+      "label": "通过",
+      "source": "evaluate",
+      "target": "verify"
+    },
+    {
+      "id": "evaluate-improve",
+      "label": "未通过 · 有剩余轮次",
+      "source": "evaluate",
+      "target": "improve"
+    },
+    {
+      "id": "improve-execute",
+      "label": "下一轮",
+      "source": "improve",
+      "target": "execute"
+    },
+    {
+      "id": "verify-deliver",
+      "label": "通过",
+      "source": "verify",
+      "target": "deliver"
+    }
+  ],
+  "id": "skill-build",
+  "nodes": [
+    {
+      "actions": [
+        "import"
+      ],
+      "form": "source",
+      "id": "source",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "role": "",
+      "subtitle": "选择文件、文件夹或 URL",
+      "title": "导入材料"
+    },
+    {
+      "actions": [
+        "create",
+        "save_defaults"
+      ],
+      "form": "configure",
+      "id": "configure",
+      "position": {
+        "x": 420,
+        "y": 0
+      },
+      "role": "",
+      "subtitle": "统一构建模型 · 独立执行模型",
+      "title": "模型与流程"
+    },
+    {
+      "actions": [
+        "accept_materials",
+        "retry_parse",
+        "cancel"
+      ],
+      "form": "parse",
+      "id": "parse",
+      "position": {
+        "x": 840,
+        "y": 0
+      },
+      "role": "builder",
+      "subtitle": "冻结本次使用的材料",
+      "title": "解析与核对"
+    },
+    {
+      "actions": [
+        "review",
+        "resume",
+        "cancel"
+      ],
+      "form": "review",
+      "id": "review",
+      "position": {
+        "x": 840,
+        "y": 580
+      },
+      "role": "builder",
+      "subtitle": "只澄清影响结果的决定",
+      "title": "目标与问答"
+    },
+    {
+      "actions": [
+        "approve"
+      ],
+      "form": "approve",
+      "id": "approve",
+      "position": {
+        "x": 420,
+        "y": 580
+      },
+      "role": "",
+      "subtitle": "确认后才开始构建",
+      "title": "确认范围"
+    },
+    {
+      "actions": [
+        "resume",
+        "cancel"
+      ],
+      "form": "runtime",
+      "id": "build",
+      "position": {
+        "x": 0,
+        "y": 580
+      },
+      "role": "builder",
+      "subtitle": "生成第一版候选",
+      "title": "构建 Skill"
+    },
+    {
+      "actions": [
+        "retry_development",
+        "cancel"
+      ],
+      "form": "runtime",
+      "id": "execute",
+      "position": {
+        "x": 0,
+        "y": 1160
+      },
+      "role": "executors",
+      "subtitle": "模型 × 场景 × 重复次数",
+      "title": "开发执行"
+    },
+    {
+      "actions": [
+        "resume",
+        "cancel"
+      ],
+      "form": "runtime",
+      "id": "evaluate",
+      "position": {
+        "x": 420,
+        "y": 1160
+      },
+      "role": "builder",
+      "subtitle": "文件检查与模型判断",
+      "title": "开发评估"
+    },
+    {
+      "actions": [
+        "resume",
+        "cancel"
+      ],
+      "form": "runtime",
+      "id": "improve",
+      "position": {
+        "x": 420,
+        "y": 1740
+      },
+      "role": "builder",
+      "subtitle": "根据失败证据改进",
+      "title": "重构 Skill"
+    },
+    {
+      "actions": [
+        "retry_holdout",
+        "cancel"
+      ],
+      "form": "runtime",
+      "id": "verify",
+      "position": {
+        "x": 840,
+        "y": 1160
+      },
+      "role": "executors",
+      "subtitle": "独立场景验证准确版本",
+      "title": "保留验证"
+    },
+    {
+      "actions": [
+        "download",
+        "report"
+      ],
+      "form": "deliver",
+      "id": "deliver",
+      "position": {
+        "x": 840,
+        "y": 1740
+      },
+      "role": "",
+      "subtitle": "通过验证才可获取交付包",
+      "title": "交付与导出"
+    }
+  ],
+  "source_sha256": "aef82e98f20baa0b3c4823c0def52590702b38fba9118a3ca9dadd80ae161d4b",
+  "version": 1
+}

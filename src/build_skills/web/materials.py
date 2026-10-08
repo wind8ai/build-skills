@@ -10,7 +10,31 @@ from build_skills.models import MaterialParsing, ParsedMaterial
 from build_skills.providers.process import invoke
 from build_skills.workspace import read_json, safe_path, snapshot, write_json
 
-TEXT_TYPES = {".txt", ".md", ".markdown", ".csv", ".json", ".yaml", ".yml", ".rst"}
+TEXT_TYPES = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".csv",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".rst",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".java",
+    ".go",
+    ".rs",
+    ".toml",
+    ".xml",
+    ".html",
+    ".css",
+    ".sh",
+    ".sql",
+    ".ini",
+    ".star",
+}
 SUPPORTED = TEXT_TYPES | {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
 
 
@@ -29,7 +53,7 @@ def check_text(text: str) -> None:
 
 def record_upload(original: Path, name: str) -> dict[str, Any]:
     text = None
-    if original.suffix.lower() in TEXT_TYPES:
+    if original.suffix.lower() in TEXT_TYPES or Path(name).name in {"LICENSE", "NOTICE"}:
         text = original.read_text(encoding="utf-8-sig")
         check_text(text)
     return {
@@ -126,7 +150,11 @@ def parse_materials(job: Path, config: Config, timeout: float) -> None:
         check_text(item.text)
         if item.status == "partial" and not item.warnings:
             raise ValueError("部分解析的结果必须说明遗漏或不确定内容")
-        files.append(item.model_dump() | {"name": source["name"], "sha256": source["sha256"]})
+        files.append(
+            item.model_dump()
+            | {"name": source["name"], "sha256": source["sha256"]}
+            | ({"origin": source["origin"]} if "origin" in source else {})
+        )
     if sum(len(item["text"].encode()) for item in files) > 5_000_000:
         raise ValueError("提取文字总量最多 5 MB")
     receipt = read_json(folder / "call/attempt.json") if pending else {}
@@ -156,5 +184,7 @@ def accept_materials(job: Path, accepted: str) -> None:
         [{key: value for key, value in item.items() if key != "text"} for item in result["files"]],
     )
     # Keep the existing CLI size and snapshot contract, including source metadata.
-    snapshot([str(target)])
-    write_json(job / "parsing/approval.json", {"digest": accepted})
+    frozen = snapshot([str(target)])
+    write_json(
+        job / "parsing/approval.json", {"digest": accepted, "materials_digest": digest(frozen)}
+    )

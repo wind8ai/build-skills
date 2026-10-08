@@ -249,3 +249,82 @@ def test_progress_does_not_keep_showing_an_old_error(client: TestClient, tmp_pat
     assert "error" not in current
     assert current["previous_error"] == "old decode failure"
     assert read_json(result_path)["error"] == "old decode failure"
+
+
+@pytest.fixture
+def delivered_job(client):
+    identifier = create_job(client, [("files", ("notes.txt", b"Copy exactly"))])
+    state = wait(client, identifier)
+    client.post(
+        f"/api/jobs/{identifier}/accept-materials",
+        headers=HEADERS,
+        json={"digest": state["parsing_digest"]},
+    ).raise_for_status()
+    state = wait(client, identifier)
+    client.post(
+        f"/api/jobs/{identifier}/approve", headers=HEADERS, json={"digest": state["brief_digest"]}
+    ).raise_for_status()
+    state = wait(client, identifier)
+    assert state["status"] == "delivered"
+    return identifier, state
+
+
+def test_download_rejects_unverified_extra_file(client, delivered_job):
+    identifier, state = delivered_job
+    (Path(state["delivery"]) / "unverified.txt").write_text("not validated")
+    response = client.get(f"/api/jobs/{identifier}/download")
+    assert response.status_code == 400
+    assert "unverified.txt" in response.text
+
+
+def test_repeated_and_parallel_downloads_use_same_immutable_zip(client, delivered_job, tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    identifier, _ = delivered_job
+    url = f"/api/jobs/{identifier}/download"
+    first = client.get(url)
+    first.raise_for_status()
+    archive = next((tmp_path / "jobs" / identifier).glob("delivery-*.zip"))
+    before = archive.stat().st_mtime_ns
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: client.get(url), range(2)))
+    for response in responses:
+        assert response.status_code == 200, response.text
+        assert response.content == first.content
+        with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
+            assert bundle.testzip() is None
+            assert set(bundle.namelist()) == {"skill/SKILL.md", "report.json"}
+    assert archive.stat().st_mtime_ns == before
+
+
+def test_downloads_that_overlap_during_validation_both_complete(client, delivered_job, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+
+    from build_skills.workflow import Workflow
+
+    identifier, _ = delivered_job
+    entered, release = Event(), Event()
+    original = Workflow.deliver
+
+    def pause_first(self):
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(5)
+        return original(self)
+
+    monkeypatch.setattr(Workflow, "deliver", pause_first)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(client.get, f"/api/jobs/{identifier}/download")
+        assert entered.wait(5)
+        second = pool.submit(client.get, f"/api/jobs/{identifier}/download")
+        try:
+            with pytest.raises(TimeoutError):
+                second.result(timeout=0.15)
+        finally:
+            release.set()
+        for future in (first, second):
+            response = future.result(timeout=5)
+            assert response.status_code == 200, response.text
+            with zipfile.ZipFile(io.BytesIO(response.content)) as bundle:
+                assert bundle.testzip() is None
